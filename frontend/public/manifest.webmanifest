@@ -1,0 +1,25 @@
+{
+  "id": "/?source=pwa",
+  "name": "BK Scholar Awards 2026",
+  "short_name": "BK Awards",
+  "description": "Mobile-first event operations, student registration, and live coordination for BK Scholar Awards 2026.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6fbff",
+  "theme_color": "#2497d3",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/pwa-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable any"
+    }
+  ]
+}
