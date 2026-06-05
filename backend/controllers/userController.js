@@ -114,4 +114,65 @@ async function bulkImportGuests(req, res) {
   }
 }
 
-module.exports = { getUsers, createUser, updateUser, bulkImportGuests };
+async function bulkImportVolunteers(req, res) {
+  try {
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!rows.length) {
+      return res.status(400).json({ message: 'No rows provided' });
+    }
+
+    let roleId = req.body.roleId || null;
+    const roleCode = String(req.body.roleCode || '').trim().toUpperCase();
+
+    if (!roleId && roleCode) {
+      const role = await Role.findOne({ code: roleCode });
+      roleId = role?._id || null;
+    }
+
+    const created = [];
+    const errors = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index] || {};
+      try {
+        const name = String(row.name || row.fullName || '').trim();
+        const username = String(row.username || '').trim();
+        const password = String(row.password || '').trim() || 'volunteer123';
+
+        if (!name || !username) {
+          throw new Error('Name and username are required');
+        }
+
+        const doc = await User.create({
+          name,
+          username,
+          password,
+          mobile: String(row.mobile || '').trim(),
+          email: String(row.email || '').trim(),
+          roleId: row.roleId || roleId,
+          eventDutyType: 'VOLUNTEER',
+          isActive: row.isActive !== undefined ? Boolean(row.isActive) : true,
+        });
+
+        const populated = await User.findById(doc._id).populate('roleId');
+        created.push(populated);
+      } catch (error) {
+        errors.push({
+          row: index + 2,
+          username: row.username || '',
+          message: error.message,
+        });
+      }
+    }
+
+    res.status(201).json({
+      message: `Imported ${created.length} volunteer(s)`,
+      created,
+      errors,
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}
+
+module.exports = { getUsers, createUser, updateUser, bulkImportGuests, bulkImportVolunteers };
