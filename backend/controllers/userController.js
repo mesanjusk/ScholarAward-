@@ -57,7 +57,7 @@ async function bulkImportGuests(req, res) {
   try {
     const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
     if (!rows.length) {
-      return res.status(400).json({ message: 'No rows provided' });
+      return res.status(200).json({ message: 'No rows provided', created: [], errors: [] });
     }
 
     let roleId = req.body.roleId || null;
@@ -66,6 +66,10 @@ async function bulkImportGuests(req, res) {
     if (!roleId && roleCode) {
       const role = await Role.findOne({ code: roleCode });
       roleId = role?._id || null;
+    }
+
+    if (!roleId) {
+      return res.status(400).json({ message: 'A valid role must be selected before importing.' });
     }
 
     const created = [];
@@ -118,7 +122,7 @@ async function bulkImportVolunteers(req, res) {
   try {
     const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
     if (!rows.length) {
-      return res.status(400).json({ message: 'No rows provided' });
+      return res.status(200).json({ message: 'No rows provided', created: [], errors: [] });
     }
 
     let roleId = req.body.roleId || null;
@@ -127,6 +131,10 @@ async function bulkImportVolunteers(req, res) {
     if (!roleId && roleCode) {
       const role = await Role.findOne({ code: roleCode });
       roleId = role?._id || null;
+    }
+
+    if (!roleId) {
+      return res.status(400).json({ message: 'A valid role must be selected before importing.' });
     }
 
     const created = [];
