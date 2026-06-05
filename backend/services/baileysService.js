@@ -233,37 +233,14 @@ async function sendButtonMessage({ to, text, footer = '', buttons = [] }) {
   if (!baileysSocket || baileysState.status !== 'CONNECTED')
     throw new Error('Baileys not connected — scan QR first.');
 
-  const jid = formatJid(to);
-  const mod = await import('@whiskeysockets/baileys');
-  const generateWAMessageFromContent = mod.generateWAMessageFromContent;
-  const proto = mod.proto;
-
-  // Use nativeFlowMessage (quick_reply) — works in Baileys 6.x
-  if (generateWAMessageFromContent && proto?.Message?.fromObject) {
-    const msgContent = proto.Message.fromObject({
-      interactiveMessage: {
-        body:   { text },
-        footer: { text: footer },
-        header: { hasMediaAttachment: false },
-        nativeFlowMessage: {
-          buttons: buttons.map((b, i) => ({
-            name: 'quick_reply',
-            buttonParamsJson: JSON.stringify({ display_text: b.label, id: b.id || `btn_${i}` }),
-          })),
-        },
-      },
-    });
-
-    const msg = generateWAMessageFromContent(jid, msgContent, {
-      userJid: baileysSocket.user?.id,
-    });
-    return baileysSocket.relayMessage(jid, msg.message, { messageId: msg.key.id });
-  }
-
-  // Fallback: plain numbered text if proto is unavailable
-  const optionLines = buttons.map((b, i) => `${i + 1}️⃣ *${b.label}*`).join('\n');
-  const body = `${text}\n\n${optionLines}${footer ? `\n\n_${footer}_` : ''}`;
-  return baileysSocket.sendMessage(jid, { text: body });
+  // WhatsApp polls are natively interactive — recipients tap to vote, sender sees results
+  return baileysSocket.sendMessage(formatJid(to), {
+    poll: {
+      name: text,
+      values: buttons.map(b => b.label),
+      selectableCount: 1,
+    },
+  });
 }
 
 async function getGroups() {
