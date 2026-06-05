@@ -225,6 +225,21 @@ async function sendImage({ to, imageUrl, caption = '' }) {
   return baileysSocket.sendMessage(formatJid(to), { image: { url: imageUrl }, caption });
 }
 
+async function sendButtonMessage({ to, text, footer = '', buttons = [] }) {
+  if (!baileysSocket || baileysState.status !== 'CONNECTED')
+    throw new Error('Baileys not connected — scan QR first.');
+  return baileysSocket.sendMessage(formatJid(to), {
+    text,
+    footer,
+    buttons: buttons.map((b, i) => ({
+      buttonId: b.id || `btn_${i}`,
+      buttonText: { displayText: b.label },
+      type: 1,
+    })),
+    headerType: 1,
+  });
+}
+
 async function getGroups() {
   if (!baileysSocket || baileysState.status !== 'CONNECTED') return [];
   try {
@@ -251,4 +266,4 @@ async function autoConnectIfCredentialsExist() {
   }
 }
 
-module.exports = { connect, disconnect, sendText, sendImage, getStatus, getGroups, autoConnectIfCredentialsExist };
+module.exports = { connect, disconnect, sendText, sendImage, sendButtonMessage, getStatus, getGroups, autoConnectIfCredentialsExist };

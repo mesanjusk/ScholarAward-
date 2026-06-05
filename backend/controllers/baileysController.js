@@ -156,6 +156,9 @@ async function sendInvitation(req, res) {
     venue,
     textPosition = 'bottom',
     recipients = [],
+    includeRsvp = false,
+    rsvpYesLabel = 'Yes, I\'ll attend ✅',
+    rsvpNoLabel  = 'Sorry, can\'t make it ❌',
   } = req.body;
 
   const missingFields = [];
@@ -195,6 +198,34 @@ async function sendInvitation(req, res) {
         status: 'SENT',
         meta: { eventName, date, time, venue, imageUrl, textPosition },
       });
+
+      if (includeRsvp) {
+        try {
+          await baileysService.sendButtonMessage({
+            to: phone,
+            text: `Will you be attending *${eventName}*? 🎉`,
+            footer: `${date}  •  ${venue}`,
+            buttons: [
+              { id: 'rsvp_yes', label: rsvpYesLabel },
+              { id: 'rsvp_no',  label: rsvpNoLabel  },
+            ],
+          });
+          await BaileysMessage.create({
+            to: phone,
+            from: '',
+            contactName: recipient.name || '',
+            conversationKey: getConversationKey(phone),
+            direction: 'OUTGOING',
+            source: 'INVITATION',
+            messageType: 'INTERACTIVE',
+            bodyText: `RSVP: ${rsvpYesLabel} / ${rsvpNoLabel}`,
+            status: 'SENT',
+            meta: { rsvp: true, rsvpYesLabel, rsvpNoLabel },
+          });
+        } catch (rsvpErr) {
+          console.warn('[baileys] RSVP button send failed for', phone, rsvpErr.message);
+        }
+      }
 
       success++;
     } catch (err) {
