@@ -89,4 +89,28 @@ async function liveBoard(req, res) {
   res.json({ current, queue, guests });
 }
 
-module.exports = { getAssignments, createAssignment, generateFromEligible, changeGuest, updateStatus, liveBoard };
+async function bulkAssignNames(req, res) {
+  const { updates } = req.body;
+  if (!Array.isArray(updates) || !updates.length) {
+    return res.status(400).json({ message: 'No updates provided' });
+  }
+  let count = 0;
+  for (const item of updates) {
+    if (!item.id) continue;
+    const update = {};
+    if (item.guestId !== undefined) {
+      update.plannedGuestId = item.guestId || null;
+      update.actualGuestId = item.guestId || null;
+    }
+    if (item.volunteerId !== undefined) update.volunteerId = item.volunteerId || null;
+    if (item.teamMemberId !== undefined) update.teamMemberId = item.teamMemberId || null;
+    if (Object.keys(update).length > 0) {
+      await StageAssignment.findByIdAndUpdate(item.id, update);
+      count++;
+    }
+  }
+  emitEvent('stage_assignment_updated', { bulkUpdated: count });
+  res.json({ updated: count });
+}
+
+module.exports = { getAssignments, createAssignment, generateFromEligible, changeGuest, updateStatus, liveBoard, bulkAssignNames };
