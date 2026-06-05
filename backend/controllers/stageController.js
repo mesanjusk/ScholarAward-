@@ -92,7 +92,7 @@ async function liveBoard(req, res) {
 async function bulkAssignNames(req, res) {
   const { updates } = req.body;
   if (!Array.isArray(updates) || !updates.length) {
-    return res.status(400).json({ message: 'No updates provided' });
+    return res.json({ updated: 0 });
   }
   let count = 0;
   for (const item of updates) {

@@ -50,6 +50,7 @@ const baileysTabs = [
 const emptyInvitationForm = {
   recipientMode: 'single', singleName: '', singleNumber: '',
   imageUrl: '', eventName: '', date: '', time: '', venue: '',
+  includeRsvp: false, rsvpYesLabel: 'Yes, I\'ll attend ✅', rsvpNoLabel: 'Sorry, can\'t make it ❌',
 };
 
 // Default font style
@@ -745,6 +746,24 @@ function InvitationPanel({
               <TextField fullWidth label="Venue" value={invitationForm.venue}
                 onChange={e => setInvitationForm(p => ({ ...p, venue: e.target.value }))} />
             </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormControlLabel
+                control={<Switch checked={!!invitationForm.includeRsvp} onChange={e => setInvitationForm(p => ({ ...p, includeRsvp: e.target.checked }))} color="success" />}
+                label={<Typography variant="body2" fontWeight={600}>Include RSVP Buttons (Yes / No)</Typography>}
+              />
+            </Grid>
+            {invitationForm.includeRsvp && (
+              <>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField fullWidth size="small" label="Yes Button Label" value={invitationForm.rsvpYesLabel}
+                    onChange={e => setInvitationForm(p => ({ ...p, rsvpYesLabel: e.target.value }))} />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField fullWidth size="small" label="No Button Label" value={invitationForm.rsvpNoLabel}
+                    onChange={e => setInvitationForm(p => ({ ...p, rsvpNoLabel: e.target.value }))} />
+                </Grid>
+              </>
+            )}
           </Grid>
         </CardContent></Card>
 
