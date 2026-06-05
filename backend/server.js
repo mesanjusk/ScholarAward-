@@ -10,6 +10,27 @@ const seedAdmin = require("./seedAdmin");
 
 dotenv.config();
 
+// Prevent Baileys internal errors (e.g. sendRetryRequest on a closed socket)
+// from crashing the whole Node process.
+process.on('unhandledRejection', (reason) => {
+  const msg = reason?.message || String(reason);
+  if (msg.includes('Connection Closed') || msg.includes('Timed Out') || msg.includes('baileys')) {
+    console.warn('[unhandledRejection] Baileys internal error (ignored):', msg);
+  } else {
+    console.error('[unhandledRejection]', reason);
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  const msg = err?.message || String(err);
+  if (msg.includes('Connection Closed') || msg.includes('Timed Out')) {
+    console.warn('[uncaughtException] Baileys socket error (ignored):', msg);
+  } else {
+    console.error('[uncaughtException] Fatal:', err);
+    process.exit(1);
+  }
+});
+
 const app = express();
 
 const allowedOrigins = [
