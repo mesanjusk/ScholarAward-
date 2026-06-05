@@ -164,10 +164,14 @@ async function connect() {
         isConnecting  = false;
         emitEvent('baileys_status', baileysState);
 
-        if (loggedOut || code === 405) {
-          await clearMongoAuthState().catch(console.error);
+        if (loggedOut || code === 405 || code === 440) {
+          if (code !== 440) await clearMongoAuthState().catch(console.error);
           reconnectCount = 0;
-          console.log('[baileys] code=' + code + ' — credentials cleared. Click Connect for a fresh QR.');
+          if (code === 440) {
+            console.log('[baileys] code=440 — another WhatsApp session took over. Open WhatsApp → Linked Devices and remove the old session, then click Connect for a fresh QR.');
+          } else {
+            console.log('[baileys] code=' + code + ' — credentials cleared. Click Connect for a fresh QR.');
+          }
         } else {
           reconnectCount++;
           if (reconnectCount <= MAX_RECONNECT_ATTEMPTS) {
@@ -228,16 +232,10 @@ async function sendImage({ to, imageUrl, caption = '' }) {
 async function sendButtonMessage({ to, text, footer = '', buttons = [] }) {
   if (!baileysSocket || baileysState.status !== 'CONNECTED')
     throw new Error('Baileys not connected — scan QR first.');
-  return baileysSocket.sendMessage(formatJid(to), {
-    text,
-    footer,
-    buttons: buttons.map((b, i) => ({
-      buttonId: b.id || `btn_${i}`,
-      buttonText: { displayText: b.label },
-      type: 1,
-    })),
-    headerType: 1,
-  });
+  // WhatsApp deprecated the buttonMessage format — send as formatted text instead
+  const optionLines = buttons.map((b, i) => `${i + 1}️⃣ *${b.label}*`).join('\n');
+  const body = `${text}\n\n${optionLines}${footer ? `\n\n_${footer}_` : ''}`;
+  return baileysSocket.sendMessage(formatJid(to), { text: body });
 }
 
 async function getGroups() {
