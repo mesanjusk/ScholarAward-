@@ -233,14 +233,11 @@ async function sendButtonMessage({ to, text, footer = '', buttons = [] }) {
   if (!baileysSocket || baileysState.status !== 'CONNECTED')
     throw new Error('Baileys not connected — scan QR first.');
 
-  // WhatsApp polls are natively interactive — recipients tap to vote, sender sees results
-  return baileysSocket.sendMessage(formatJid(to), {
-    poll: {
-      name: text,
-      values: buttons.map(b => b.label),
-      selectableCount: 1,
-    },
-  });
+  // WhatsApp polls and interactive buttons are blocked/unreliable on unofficial
+  // linked-device clients. Send a plain text RSVP instead — guaranteed delivery.
+  const optionLines = buttons.map((b, i) => `*${i + 1}* — ${b.label}`).join('\n');
+  const body = `${text}\n\n${optionLines}${footer ? `\n\n${footer}` : ''}`;
+  return baileysSocket.sendMessage(formatJid(to), { text: body });
 }
 
 async function getGroups() {
