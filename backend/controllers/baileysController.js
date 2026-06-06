@@ -14,10 +14,16 @@ function getConversationKey(phone) {
 // ── Status & QR ───────────────────────────────────────────────────────────────
 
 async function getStatus(req, res) {
+  if (!baileysService.isWhatsappEnabled()) {
+    return res.json({ qr: null, status: 'DISABLED', phone: '', message: 'WhatsApp disabled on this instance (WHATSAPP_ENABLED not set).' });
+  }
   res.json(baileysService.getStatus());
 }
 
 async function startConnection(req, res) {
+  if (!baileysService.isWhatsappEnabled()) {
+    return res.status(403).json({ message: 'WhatsApp is disabled on this server instance. Set WHATSAPP_ENABLED=true in environment variables to enable it.' });
+  }
   try {
     console.log('[baileys] /connect hit — starting connection');
     await baileysService.connect();
