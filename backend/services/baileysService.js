@@ -254,7 +254,21 @@ async function getGroups() {
   }
 }
 
+// Returns true if WhatsApp/Baileys is enabled on this instance.
+// Set WHATSAPP_ENABLED=true in Render env vars on ONE instance only.
+// Leave it unset (or set to false) on the second instance to prevent
+// code=440 conflicts when two Render services share the same MongoDB.
+function isWhatsappEnabled() {
+  const val = String(process.env.WHATSAPP_ENABLED || '').trim().toLowerCase();
+  // Default to enabled only if explicitly set to "true" or "1"
+  return val === 'true' || val === '1';
+}
+
 async function autoConnectIfCredentialsExist() {
+  if (!isWhatsappEnabled()) {
+    console.log('[baileys] WHATSAPP_ENABLED is not set — WhatsApp disabled on this instance.');
+    return;
+  }
   try {
     const { state } = await useMongoAuthState();
     const hasCreds = state?.creds?.me || state?.creds?.noiseKey;
@@ -269,4 +283,4 @@ async function autoConnectIfCredentialsExist() {
   }
 }
 
-module.exports = { connect, disconnect, sendText, sendImage, sendButtonMessage, getStatus, getGroups, autoConnectIfCredentialsExist };
+module.exports = { connect, disconnect, sendText, sendImage, sendButtonMessage, getStatus, getGroups, autoConnectIfCredentialsExist, isWhatsappEnabled };
