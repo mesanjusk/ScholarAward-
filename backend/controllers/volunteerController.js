@@ -29,6 +29,52 @@ function buildFullName(body = {}) {
     .trim();
 }
 
+
+function normalizeVolunteerPayload(body = {}) {
+  const firstName = String(body.firstName || '').trim();
+  const lastName  = String(body.lastName  || '').trim();
+  const fullName  = String(body.fullName  || buildFullName(body)).trim();
+  const mobile    = normalizePhone(body.mobile);
+
+  if (!firstName || !lastName || !mobile) {
+    const error = new Error('First name, last name and mobile are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    firstName,
+    lastName,
+    fullName,
+    gender:   String(body.gender   || '').trim(),
+    address:  String(body.address  || '').trim(),
+    mobile,
+    teamOther: String(body.teamOther || '').trim(),
+    photoUrl:  String(body.photoUrl  || '').trim(),
+    remarks:   String(body.remarks   || '').trim()
+  };
+}
+
+async function resolveVolunteerTeam(teamId) {
+  const rawTeamId = String(teamId || '').trim();
+  if (!rawTeamId) return { teamId: null, teamName: '' };
+
+  if (!mongoose.Types.ObjectId.isValid(rawTeamId)) {
+    const error = new Error('Invalid volunteer team category');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const team = await Category.findById(rawTeamId);
+  if (!team) {
+    const error = new Error('Volunteer team category not found');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return { teamId: team._id, teamName: team.title || '' };
+}
+
 async function getPublicTeams(req, res) {
   try {
     const docs = await Category.find({ categoryType: 'VOLUNTEER_TEAM', isActive: true })
@@ -268,6 +314,58 @@ async function createPublicVolunteer(req, res) {
   }
 }
 
+async function getVolunteers(req, res) {
+  try {
+    const docs = await Volunteer.find()
+      .populate('teamId', '_id title categoryType')
+      .sort({ createdAt: -1 });
+    res.json(docs);
+  } catch (error) {
+    console.error('getVolunteers error:', error);
+    res.status(500).json({ message: 'Failed to fetch volunteers' });
+  }
+}
+
+async function createVolunteer(req, res) {
+  try {
+    const { teamId } = await resolveVolunteerTeam(req.body.teamId);
+    const payload = normalizeVolunteerPayload(req.body);
+    payload.teamId = teamId;
+    if (teamId) payload.teamOther = '';
+
+    const created = await Volunteer.create(payload);
+    const doc = await Volunteer.findById(created._id).populate('teamId', '_id title categoryType');
+    emitEvent('volunteer_created', { volunteerId: doc._id, fullName: doc.fullName });
+
+    res.status(201).json(doc);
+  } catch (error) {
+    console.error('createVolunteer error:', error);
+    res.status(error.statusCode || 500).json({ message: error.message || 'Failed to create volunteer' });
+  }
+}
+
+async function updateVolunteer(req, res) {
+  try {
+    const { teamId } = await resolveVolunteerTeam(req.body.teamId);
+    const payload = normalizeVolunteerPayload(req.body);
+    payload.teamId = teamId;
+    if (teamId) payload.teamOther = '';
+
+    const doc = await Volunteer.findByIdAndUpdate(req.params.id, payload, {
+      new: true,
+      runValidators: true
+    }).populate('teamId', '_id title categoryType');
+
+    if (!doc) return res.status(404).json({ message: 'Volunteer not found' });
+
+    emitEvent('volunteer_updated', { volunteerId: doc._id, fullName: doc.fullName });
+    res.json(doc);
+  } catch (error) {
+    console.error('updateVolunteer error:', error);
+    res.status(error.statusCode || 500).json({ message: error.message || 'Failed to update volunteer' });
+  }
+}
+
 async function resendVolunteerOtp(req, res) {
   try {
     const mobile = normalizePhone(req.body.mobile);
@@ -296,4 +394,4 @@ async function resendVolunteerOtp(req, res) {
   }
 }
 
-module.exports = { getPublicTeams, createPublicVolunteer, resendVolunteerOtp };
+module.exports = { getPublicTeams, getVolunteers, createVolunteer, updateVolunteer, createPublicVolunteer, resendVolunteerOtp };
