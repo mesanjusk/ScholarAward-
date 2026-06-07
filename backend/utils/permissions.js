@@ -3,6 +3,7 @@ const PERMISSIONS = {
   users_manage: 'users:manage',
   roles_manage: 'roles:manage',
   students_manage: 'students:manage',
+  volunteers_manage: 'volunteers:manage',
   categories_manage: 'categories:manage',
   stage_manage: 'stage:manage',
   guest_manage: 'guest:manage',

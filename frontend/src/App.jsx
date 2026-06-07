@@ -11,6 +11,7 @@ import { MODULE_PERMISSIONS } from './utils/accessControl';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
+import VolunteersPage from './pages/VolunteersPage';
 import CategoriesPage from './pages/CategoriesPage';
 import StagePage from './pages/StagePage';
 import BudgetPage from './pages/BudgetPage';
@@ -39,6 +40,7 @@ function Layout({ children }) {
 const protectedPages = [
   ['/',                     <DashboardPage />,         MODULE_PERMISSIONS.dashboard],
   ['/students',             <StudentsPage />,           MODULE_PERMISSIONS.students],
+  ['/volunteers',           <VolunteersPage />,         MODULE_PERMISSIONS.volunteers],
   ['/anchors',              <AnchorsPage />,            MODULE_PERMISSIONS.anchors],
   ['/categories',           <CategoriesPage />,         MODULE_PERMISSIONS.categories],
   ['/stage',                <StagePage />,              MODULE_PERMISSIONS.stage],
