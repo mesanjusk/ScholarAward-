@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Button, Card, CardContent, Grid, List, ListItem, ListItemText, Stack, Typography } from '@mui/material';
-import { Mic, OpenInNew, School } from '@mui/icons-material';
+import { Mic, OpenInNew, School, VolunteerActivism } from '@mui/icons-material';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLive } from '../context/LiveContext';
@@ -19,6 +19,7 @@ export default function DashboardPage() {
 
   const cards = useMemo(() => [
     ['Students', summary.students || 0, 'Registered'],
+    ['Volunteers', summary.volunteers || 0, 'Registered'],
     ['Anchors', summary.anchors || 0, 'Registered'],
     ['Eligible', summary.eligibleStudents || 0, 'Ready for review'],
     ['WhatsApp', summary.whatsappMessages || 0, connected ? 'Live sync active' : 'Waiting for sync'],
@@ -30,7 +31,7 @@ export default function DashboardPage() {
       <PageHeader
         eyebrow="Overview"
         title="Operations Dashboard"
-        subtitle="A cleaner WhatsApp-style workspace for daily student, event and inbox management."
+        subtitle="A cleaner WhatsApp-style workspace for daily student, volunteer, event and inbox management."
         chips={[
           { label: user?.roleId?.name || 'Dashboard' },
           { label: `${events.length} Live updates`, color: connected ? 'success' : 'warning' },
@@ -70,6 +71,23 @@ export default function DashboardPage() {
                 }}
               >
                 Student Registration
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<VolunteerActivism />}
+                endIcon={<OpenInNew fontSize="small" />}
+                href="/volunteer-register"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  borderRadius: 2,
+                  bgcolor: '#16a34a',
+                  '&:hover': { bgcolor: '#15803d' }
+                }}
+              >
+                Volunteer Registration
               </Button>
               <Button
                 variant="contained"
@@ -122,7 +140,7 @@ export default function DashboardPage() {
               <CardContent>
                 <Stack spacing={1.5}>
                   <Typography variant="h6" fontWeight={800}>Quick notes</Typography>
-                  <Typography variant="body2" color="text.secondary">Use Students for registration review, WhatsApp for customer reply handling, and Admin for users, guests and teams.</Typography>
+                  <Typography variant="body2" color="text.secondary">Use Students and Volunteers for registration review, WhatsApp for customer reply handling, and Admin for users, guests and teams.</Typography>
                   <Typography variant="body2" color="text.secondary">The UI is now aligned to a WhatsApp-style management dashboard across mobile and desktop.</Typography>
                 </Stack>
               </CardContent>

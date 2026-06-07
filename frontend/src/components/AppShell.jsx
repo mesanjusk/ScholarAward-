@@ -36,6 +36,7 @@ const drawerWidth = 292;
 const navIcons = {
   '/':                     <DashboardIcon />,
   '/students':             <GroupsIcon />,
+  '/volunteers':           <VolunteerActivismIcon />,
   '/anchors':              <MicIcon />,
   '/categories':           <CategoryIcon />,
   '/stage':                <EventSeatIcon />,
@@ -65,7 +66,7 @@ export default function AppShell({ children }) {
 
   const quickActions = [
     { icon: <PersonAddAlt1Icon />, name: 'Add Student',     onClick: () => navigate('/students?action=add') },
-    { icon: <VolunteerActivismIcon />, name: 'Add Volunteer', onClick: () => navigate('/admin?tab=volunteers&action=add') },
+    { icon: <VolunteerActivismIcon />, name: 'Add Volunteer', onClick: () => navigate('/volunteers?action=add') },
     { icon: <EmojiEventsIcon />,   name: 'Add Guest',       onClick: () => navigate('/admin?tab=guests&action=add') },
     { icon: <Groups3Icon />,       name: 'Add Team Member', onClick: () => navigate('/admin?tab=team&action=add') },
   ];

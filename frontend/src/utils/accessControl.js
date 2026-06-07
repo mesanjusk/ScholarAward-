@@ -1,6 +1,7 @@
 export const MODULE_PERMISSIONS = {
   dashboard:          'dashboard:view',
   students:           'students:manage',
+  volunteers:         'volunteers:manage',
   anchors:            'anchors:manage',
   categories:         'categories:manage',
   stage:              'stage:manage',
@@ -16,6 +17,7 @@ export const MODULE_PERMISSIONS = {
 export const APP_ROUTES = [
   { label: 'Dashboard',       to: '/',                     permission: MODULE_PERMISSIONS.dashboard },
   { label: 'Students',        to: '/students',             permission: MODULE_PERMISSIONS.students },
+  { label: 'Volunteers',      to: '/volunteers',           permission: MODULE_PERMISSIONS.volunteers },
   { label: 'Anchors',         to: '/anchors',              permission: MODULE_PERMISSIONS.anchors },
   { label: 'Categories',      to: '/categories',           permission: MODULE_PERMISSIONS.categories },
   { label: 'Live Stage',      to: '/stage',                permission: MODULE_PERMISSIONS.stage },
@@ -37,7 +39,11 @@ export function canAccess(user, permission) {
   const permissions = getPermissions(user);
   if (!permissions.length) return true;
   if (permissions.includes('*')) return true;
-  return permissions.includes(permission);
+  if (permissions.includes(permission)) return true;
+  if (permission === MODULE_PERMISSIONS.volunteers) {
+    return permissions.includes(MODULE_PERMISSIONS.students) || permissions.includes(MODULE_PERMISSIONS.admin);
+  }
+  return false;
 }
 
 export function isSuperAdmin(user) {
