@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+
 import {
   Alert,
   Box,
@@ -16,11 +16,12 @@ import {
   ToggleButtonGroup,
   Typography
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+
 import EditIcon from '@mui/icons-material/Edit';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import TableRowsIcon from '@mui/icons-material/TableRows';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
+
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
 import api from '../api';
 import PageHeader from '../components/PageHeader';
@@ -103,7 +104,7 @@ function mapVolunteerToForm(volunteer) {
 }
 
 export default function VolunteersPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+
   const [volunteers, setVolunteers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -115,7 +116,7 @@ export default function VolunteersPage() {
 
   const load = async () => {
     const [v, t] = await Promise.all([
-      api.get('/volunteers'),
+
       api.get('/volunteers/public-teams')
     ]);
     setVolunteers(Array.isArray(v.data) ? v.data : []);
@@ -126,21 +127,6 @@ export default function VolunteersPage() {
     load();
   }, []);
 
-  useEffect(() => {
-    if (searchParams.get('action') === 'add') {
-      handleAdd();
-      const next = new URLSearchParams(searchParams);
-      next.delete('action');
-      setSearchParams(next, { replace: true });
-    }
-  }, [searchParams]);
-
-  const handleAdd = () => {
-    setEditing(null);
-    setForm(emptyForm);
-    setSavedMessage('');
-    setOpenDialog(true);
-  };
 
   const handleEdit = (volunteer) => {
     setEditing(volunteer);
@@ -166,13 +152,7 @@ export default function VolunteersPage() {
         fullName: buildFullName(form),
         teamOther: form.teamId ? '' : form.teamOther
       };
-      if (editing?._id) {
-        await api.put(`/volunteers/${editing._id}`, payload);
-        setSavedMessage('Volunteer updated successfully.');
-      } else {
-        await api.post('/volunteers', payload);
-        setSavedMessage('Volunteer created successfully.');
-      }
+
       await load();
       setOpenDialog(false);
       setEditing(null);
@@ -222,7 +202,7 @@ export default function VolunteersPage() {
                 <ToggleButton value="card"><ViewModuleIcon fontSize="small" /></ToggleButton>
                 <ToggleButton value="table"><TableRowsIcon fontSize="small" /></ToggleButton>
               </ToggleButtonGroup>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>Add Volunteer</Button>
+
             </Stack>
           </Stack>
         </CardContent>
@@ -254,7 +234,7 @@ export default function VolunteersPage() {
       )}
 
       <ResponsiveDialog open={openDialog} onClose={closeDialog} fullWidth maxWidth="md">
-        <DialogTitle>{editing ? 'Edit Volunteer' : 'Add Volunteer'}</DialogTitle>
+
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Grid container spacing={2}>
@@ -300,7 +280,7 @@ export default function VolunteersPage() {
                 disabled={saving || !form.firstName || !form.lastName || !form.mobile}
                 onClick={save}
               >
-                {saving ? 'Saving...' : editing ? 'Update Volunteer' : 'Save Volunteer'}
+
               </Button>
             </Stack>
           </Stack>

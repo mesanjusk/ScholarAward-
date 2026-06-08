@@ -326,23 +326,6 @@ async function getVolunteers(req, res) {
   }
 }
 
-async function createVolunteer(req, res) {
-  try {
-    const { teamId } = await resolveVolunteerTeam(req.body.teamId);
-    const payload = normalizeVolunteerPayload(req.body);
-    payload.teamId = teamId;
-    if (teamId) payload.teamOther = '';
-
-    const created = await Volunteer.create(payload);
-    const doc = await Volunteer.findById(created._id).populate('teamId', '_id title categoryType');
-    emitEvent('volunteer_created', { volunteerId: doc._id, fullName: doc.fullName });
-
-    res.status(201).json(doc);
-  } catch (error) {
-    console.error('createVolunteer error:', error);
-    res.status(error.statusCode || 500).json({ message: error.message || 'Failed to create volunteer' });
-  }
-}
 
 async function updateVolunteer(req, res) {
   try {
@@ -394,4 +377,4 @@ async function resendVolunteerOtp(req, res) {
   }
 }
 
-module.exports = { getPublicTeams, getVolunteers, createVolunteer, updateVolunteer, createPublicVolunteer, resendVolunteerOtp };
+
