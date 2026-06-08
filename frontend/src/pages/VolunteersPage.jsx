@@ -115,12 +115,13 @@ export default function VolunteersPage() {
   const [viewMode, setViewMode] = useState('card');
 
   const load = async () => {
-    const [v, t] = await Promise.all([
-
+    const [volunteerResponse, teamResponse] = await Promise.all([
+      api.get('/volunteers'),
       api.get('/volunteers/public-teams')
     ]);
-    setVolunteers(Array.isArray(v.data) ? v.data : []);
-    setTeams(Array.isArray(t.data) ? t.data : []);
+
+    setVolunteers(Array.isArray(volunteerResponse.data) ? volunteerResponse.data : []);
+    setTeams(Array.isArray(teamResponse.data) ? teamResponse.data : []);
   };
 
   useEffect(() => {
@@ -152,6 +153,11 @@ export default function VolunteersPage() {
         fullName: buildFullName(form),
         teamOther: form.teamId ? '' : form.teamOther
       };
+
+      if (editing?._id) {
+        await api.put(`/volunteers/${editing._id}`, payload);
+        setSavedMessage('Volunteer updated successfully.');
+      }
 
       await load();
       setOpenDialog(false);
@@ -234,7 +240,7 @@ export default function VolunteersPage() {
       )}
 
       <ResponsiveDialog open={openDialog} onClose={closeDialog} fullWidth maxWidth="md">
-
+        <DialogTitle>{editing ? 'Edit Volunteer' : 'Volunteer Details'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Grid container spacing={2}>
@@ -280,7 +286,7 @@ export default function VolunteersPage() {
                 disabled={saving || !form.firstName || !form.lastName || !form.mobile}
                 onClick={save}
               >
-
+                {saving ? 'Saving...' : 'Save Volunteer'}
               </Button>
             </Stack>
           </Stack>
