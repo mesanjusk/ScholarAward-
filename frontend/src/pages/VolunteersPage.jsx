@@ -118,30 +118,7 @@ export default function VolunteersPage() {
   const [viewMode, setViewMode] = useState('card');
 
   const load = async () => {
-    setLoading(true);
-    setLoadError('');
 
-    try {
-      const [volunteerResult, teamResult] = await Promise.allSettled([
-        api.get('/volunteers'),
-        api.get('/volunteers/public-teams')
-      ]);
-
-      if (volunteerResult.status === 'fulfilled') {
-        setVolunteers(Array.isArray(volunteerResult.value.data) ? volunteerResult.value.data : []);
-      } else {
-        setVolunteers([]);
-        setLoadError(volunteerResult.reason?.response?.data?.message || 'Failed to fetch volunteers.');
-      }
-
-      if (teamResult.status === 'fulfilled') {
-        setTeams(Array.isArray(teamResult.value.data) ? teamResult.value.data : []);
-      } else {
-        setTeams([]);
-      }
-    } finally {
-      setLoading(false);
-    }
   };
 
   useEffect(() => {
@@ -176,12 +153,6 @@ export default function VolunteersPage() {
         teamOther: form.teamId ? '' : form.teamOther
       };
 
-      if (!editing?._id) {
-        throw new Error('No volunteer selected for update.');
-      }
-
-      await api.put(`/volunteers/${editing._id}`, payload);
-      setSavedMessage('Volunteer updated successfully.');
 
       await load();
       setOpenDialog(false);
