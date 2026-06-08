@@ -111,17 +111,14 @@ export default function VolunteersPage() {
   const [editing, setEditing] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [savedMessage, setSavedMessage] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [viewMode, setViewMode] = useState('card');
 
   const load = async () => {
-    const [volunteerResponse, teamResponse] = await Promise.all([
-      api.get('/volunteers'),
-      api.get('/volunteers/public-teams')
-    ]);
 
-    setVolunteers(Array.isArray(volunteerResponse.data) ? volunteerResponse.data : []);
-    setTeams(Array.isArray(teamResponse.data) ? teamResponse.data : []);
   };
 
   useEffect(() => {
@@ -133,6 +130,7 @@ export default function VolunteersPage() {
     setEditing(volunteer);
     setForm(mapVolunteerToForm(volunteer));
     setSavedMessage('');
+    setSaveError('');
     setOpenDialog(true);
   };
 
@@ -147,6 +145,7 @@ export default function VolunteersPage() {
   const save = async () => {
     setSaving(true);
     setSavedMessage('');
+    setSaveError('');
     try {
       const payload = {
         ...form,
@@ -154,15 +153,13 @@ export default function VolunteersPage() {
         teamOther: form.teamId ? '' : form.teamOther
       };
 
-      if (editing?._id) {
-        await api.put(`/volunteers/${editing._id}`, payload);
-        setSavedMessage('Volunteer updated successfully.');
-      }
 
       await load();
       setOpenDialog(false);
       setEditing(null);
       setForm(emptyForm);
+    } catch (error) {
+      setSaveError(error?.response?.data?.message || error.message || 'Failed to save volunteer.');
     } finally {
       setSaving(false);
     }
@@ -215,8 +212,15 @@ export default function VolunteersPage() {
       </Card>
 
       {savedMessage ? <Alert sx={{ mb: 2 }} severity="success">{savedMessage}</Alert> : null}
+      {loadError ? <Alert sx={{ mb: 2 }} severity="error">{loadError}</Alert> : null}
 
-      {viewMode === 'card' ? (
+      {loading ? (
+        <Card>
+          <CardContent>
+            <Typography color="text.secondary">Loading volunteers...</Typography>
+          </CardContent>
+        </Card>
+      ) : viewMode === 'card' ? (
         <Grid container spacing={2}>
           {volunteers.map((volunteer) => (
             <Grid key={volunteer._id} size={{ xs: 12, md: 6, xl: 4 }}>
@@ -243,6 +247,7 @@ export default function VolunteersPage() {
         <DialogTitle>{editing ? 'Edit Volunteer' : 'Volunteer Details'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
+            {saveError ? <Alert severity="error">{saveError}</Alert> : null}
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField label="First Name" value={form.firstName} onChange={(e) => updateField('firstName', e.target.value)} required />
