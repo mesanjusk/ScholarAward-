@@ -111,16 +111,37 @@ export default function VolunteersPage() {
   const [editing, setEditing] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [savedMessage, setSavedMessage] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [viewMode, setViewMode] = useState('card');
 
   const load = async () => {
-    const [v, t] = await Promise.all([
+    setLoading(true);
+    setLoadError('');
 
-      api.get('/volunteers/public-teams')
-    ]);
-    setVolunteers(Array.isArray(v.data) ? v.data : []);
-    setTeams(Array.isArray(t.data) ? t.data : []);
+    try {
+      const [volunteerResult, teamResult] = await Promise.allSettled([
+        api.get('/volunteers'),
+        api.get('/volunteers/public-teams')
+      ]);
+
+      if (volunteerResult.status === 'fulfilled') {
+        setVolunteers(Array.isArray(volunteerResult.value.data) ? volunteerResult.value.data : []);
+      } else {
+        setVolunteers([]);
+        setLoadError(volunteerResult.reason?.response?.data?.message || 'Failed to fetch volunteers.');
+      }
+
+      if (teamResult.status === 'fulfilled') {
+        setTeams(Array.isArray(teamResult.value.data) ? teamResult.value.data : []);
+      } else {
+        setTeams([]);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -132,6 +153,7 @@ export default function VolunteersPage() {
     setEditing(volunteer);
     setForm(mapVolunteerToForm(volunteer));
     setSavedMessage('');
+    setSaveError('');
     setOpenDialog(true);
   };
 
@@ -146,6 +168,7 @@ export default function VolunteersPage() {
   const save = async () => {
     setSaving(true);
     setSavedMessage('');
+    setSaveError('');
     try {
       const payload = {
         ...form,
@@ -153,10 +176,19 @@ export default function VolunteersPage() {
         teamOther: form.teamId ? '' : form.teamOther
       };
 
+      if (!editing?._id) {
+        throw new Error('No volunteer selected for update.');
+      }
+
+      await api.put(`/volunteers/${editing._id}`, payload);
+      setSavedMessage('Volunteer updated successfully.');
+
       await load();
       setOpenDialog(false);
       setEditing(null);
       setForm(emptyForm);
+    } catch (error) {
+      setSaveError(error?.response?.data?.message || error.message || 'Failed to save volunteer.');
     } finally {
       setSaving(false);
     }
@@ -209,8 +241,15 @@ export default function VolunteersPage() {
       </Card>
 
       {savedMessage ? <Alert sx={{ mb: 2 }} severity="success">{savedMessage}</Alert> : null}
+      {loadError ? <Alert sx={{ mb: 2 }} severity="error">{loadError}</Alert> : null}
 
-      {viewMode === 'card' ? (
+      {loading ? (
+        <Card>
+          <CardContent>
+            <Typography color="text.secondary">Loading volunteers...</Typography>
+          </CardContent>
+        </Card>
+      ) : viewMode === 'card' ? (
         <Grid container spacing={2}>
           {volunteers.map((volunteer) => (
             <Grid key={volunteer._id} size={{ xs: 12, md: 6, xl: 4 }}>
@@ -234,9 +273,10 @@ export default function VolunteersPage() {
       )}
 
       <ResponsiveDialog open={openDialog} onClose={closeDialog} fullWidth maxWidth="md">
-
+        <DialogTitle>{editing ? 'Edit Volunteer' : 'Volunteer Details'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
+            {saveError ? <Alert severity="error">{saveError}</Alert> : null}
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField label="First Name" value={form.firstName} onChange={(e) => updateField('firstName', e.target.value)} required />
@@ -280,7 +320,7 @@ export default function VolunteersPage() {
                 disabled={saving || !form.firstName || !form.lastName || !form.mobile}
                 onClick={save}
               >
-
+                {saving ? 'Saving...' : 'Save Volunteer'}
               </Button>
             </Stack>
           </Stack>
