@@ -326,6 +326,7 @@ async function getVolunteers(req, res) {
   }
 }
 
+
 async function updateVolunteer(req, res) {
   try {
     const { teamId } = await resolveVolunteerTeam(req.body.teamId);
@@ -376,4 +377,4 @@ async function resendVolunteerOtp(req, res) {
   }
 }
 
-module.exports = { getPublicTeams, getVolunteers, updateVolunteer, createPublicVolunteer, resendVolunteerOtp };
+

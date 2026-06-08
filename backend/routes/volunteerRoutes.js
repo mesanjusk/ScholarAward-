@@ -3,6 +3,7 @@ const { protect } = require('../middleware/auth');
 const {
   getPublicTeams,
   getVolunteers,
+
   updateVolunteer,
   createPublicVolunteer,
   resendVolunteerOtp
@@ -14,6 +15,7 @@ router.post('/public-register', createPublicVolunteer);
 router.post('/resend-otp', resendVolunteerOtp);
 
 router.get('/', protect, getVolunteers);
+
 router.put('/:id', protect, updateVolunteer);
 
 module.exports = router;
