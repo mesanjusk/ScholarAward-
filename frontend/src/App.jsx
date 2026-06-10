@@ -32,6 +32,7 @@ import PublicInvitationPage from './pages/PublicInvitationPage';
 // Set to true to open registrations, false to show the "Registration Closed" page
 const STUDENT_REGISTRATION_OPEN = false;
 const ANCHOR_REGISTRATION_OPEN = false;
+const VOLUNTEER_REGISTRATION_OPEN = false;
 
 function Layout({ children }) {
   return <AppShell>{children}</AppShell>;
@@ -64,7 +65,7 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/student-register" element={STUDENT_REGISTRATION_OPEN ? <PublicStudentFormPage /> : <RegistrationClosedPage title="BK Awards – Scholar Registration" color="#2497d3" />} />
               <Route path="/student-edit/:token" element={<PublicStudentFormPage />} />
-              <Route path="/volunteer-register" element={<PublicVolunteerFormPage />} />
+              <Route path="/volunteer-register" element={VOLUNTEER_REGISTRATION_OPEN ? <PublicVolunteerFormPage /> : <RegistrationClosedPage title="BK Awards – Volunteer Registration" color="#4caf50" />} />
               <Route path="/anchor-register" element={ANCHOR_REGISTRATION_OPEN ? <PublicAnchorFormPage /> : <RegistrationClosedPage />} />
               <Route path="/anchor-edit/:token" element={<PublicAnchorFormPage />} />
               <Route path="/photo-template" element={<PublicPhotoTemplatePage />} />
