@@ -118,7 +118,20 @@ export default function VolunteersPage() {
   const [viewMode, setViewMode] = useState('card');
 
   const load = async () => {
-
+    setLoading(true);
+    setLoadError('');
+    try {
+      const [volRes, teamRes] = await Promise.all([
+        api.get('/volunteers'),
+        api.get('/volunteers/public-teams'),
+      ]);
+      setVolunteers(volRes.data);
+      setTeams(teamRes.data);
+    } catch (err) {
+      setLoadError(err?.response?.data?.message || err.message || 'Failed to load volunteers.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -153,7 +166,8 @@ export default function VolunteersPage() {
         teamOther: form.teamId ? '' : form.teamOther
       };
 
-
+      await api.put(`/volunteers/${editing._id}`, payload);
+      setSavedMessage('Volunteer saved successfully.');
       await load();
       setOpenDialog(false);
       setEditing(null);
