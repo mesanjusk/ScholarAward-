@@ -377,4 +377,12 @@ async function resendVolunteerOtp(req, res) {
   }
 }
 
+module.exports = {
+  getPublicTeams,
+  createPublicVolunteer,
+  getVolunteers,
+  updateVolunteer,
+  resendVolunteerOtp,
+};
+
 
