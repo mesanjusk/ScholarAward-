@@ -723,6 +723,8 @@ function InvitationPanel({
         return true;
       };
 
+      const localResults = []; // track results locally — avoids stale React state
+
       while (i < recipients.length) {
         if (checkCancel()) return;
         if (!await waitWhilePaused()) return;
@@ -782,34 +784,30 @@ function InvitationPanel({
             textPosition: fontStyleRef.current,
           });
           setQueue(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'delivered' } : item));
+          localResults.push({ name: recipientName, mobile: recipients[i].mobile, source: recipients[i].source, status: 'SENT', error: '' });
           sentThisMinuteRef.current++;
           sentThisHourRef.current++;
         } catch (err) {
+          const errMsg = err?.response?.data?.message || 'Failed';
           setQueue(prev => prev.map((item, idx) =>
-            idx === i ? { ...item, status: 'failed', error: err?.response?.data?.message || 'Failed' } : item));
+            idx === i ? { ...item, status: 'failed', error: errMsg } : item));
+          localResults.push({ name: recipientName, mobile: recipients[i].mobile, source: recipients[i].source, status: 'FAILED', error: errMsg });
         }
 
         i++;
         if (i < recipients.length && !cancelRef.current) await sleep(randDelay());
       }
 
-      // ── Save blast report ────────────────────────────────────────────
+      // ── Save blast report using local results (no stale state issue) ──
       if (blastIdRef.current) {
-        const finalQueue = queue; // snapshot — stale, use functional update instead
-        setQueue(prev => {
-          const recipientsResult = prev.map(r => ({
-            name: r.name, mobile: r.mobile, source: r.source,
-            status: r.status === 'delivered' ? 'SENT' : r.status === 'failed' ? 'FAILED' : 'PENDING',
-            error: r.error || '',
-          }));
-          whatsappService.updateBlast(blastIdRef.current, {
-            status: 'COMPLETED',
-            sentCount:   prev.filter(r => r.status === 'delivered').length,
-            failedCount: prev.filter(r => r.status === 'failed').length,
-            recipients:  recipientsResult,
-          }).catch(() => null);
-          return prev;
-        });
+        const sent   = localResults.filter(r => r.status === 'SENT').length;
+        const failed = localResults.filter(r => r.status === 'FAILED').length;
+        whatsappService.updateBlast(blastIdRef.current, {
+          status:     'COMPLETED',
+          sentCount:  sent,
+          failedCount: failed,
+          recipients:  localResults,
+        }).catch(() => null);
       }
 
       setQueueActive(false);
