@@ -31,6 +31,7 @@ const officialTabs = [
   ['rules',       'Auto Reply'],
   ['send',        'Quick Send'],
   ['invite',      'Invitation'],
+  ['blasts',      'Blast History'],
   ['templates',   'Templates'],
   ['connections', 'Connections'],
   ['logs',        'Logs'],
@@ -41,6 +42,7 @@ const baileysTabs = [
   ['rules',  'Auto Reply'],
   ['send',   'Quick Send'],
   ['invite', 'Invitation'],
+  ['blasts', 'Blast History'],
   ['logs',   'Logs'],
   ['setup',  'Setup / QR'],
 ];
@@ -49,8 +51,8 @@ const baileysTabs = [
 
 const emptyInvitationForm = {
   recipientMode: 'single', singleName: '', singleNumber: '',
-  imageUrl: '', eventName: '', date: '', time: '', venue: '',
-  includeRsvp: false, rsvpYesLabel: 'Yes, I\'ll attend ✅', rsvpNoLabel: 'Sorry, can\'t make it ❌',
+  imageUrl: '', message: '',
+  includeRsvp: false, rsvpYesLabel: "Yes, I'll attend ✅", rsvpNoLabel: "Sorry, can't make it ❌",
 };
 
 // Default font style
@@ -95,10 +97,11 @@ const FONT_FAMILIES = [
   { value: 'Impact',          label: 'Impact'          },
 ];
 
-const MAX_RECIPIENTS = 999;
-// Random delay between MIN and MAX seconds
-const DELAY_MIN_S = 4;
-const DELAY_MAX_S = 8;
+const MAX_RECIPIENTS  = 999;
+const DELAY_MIN_S     = 12;    // 60s ÷ 5 messages = 12s minimum gap
+const DELAY_MAX_S     = 20;    // randomised upper bound
+const MAX_PER_MINUTE  = 5;     // WhatsApp anti-ban: max 5 per minute
+const MAX_PER_HOUR    = 150;   // WhatsApp anti-ban: max 150 per hour
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -122,11 +125,11 @@ function parseRowsToRecipients(rows = []) {
   })).filter(item => item.mobile);
 }
 
-// Format seconds to mm:ss
 function fmtSecs(s) {
   if (!s || s < 0) return '0s';
   if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
 // ── Canvas drawing helper ─────────────────────────────────────────────────────
@@ -506,6 +509,7 @@ function InvitationPanel({
   const isDraggingRef  = useRef(false);
   const [previewIdx,   setPreviewIdx]   = useState(0);
   const [imageLoaded,  setImageLoaded]  = useState(false);
+  const [canvasHeight, setCanvasHeight] = useState(400);
 
   // ── Queue state ─────────────────────────────────────────────────────────────
   const [queue,       setQueue]       = useState([]);
@@ -513,8 +517,19 @@ function InvitationPanel({
   const [queuePaused, setQueuePaused] = useState(false);
   const [queueDone,   setQueueDone]   = useState(false);
   const [queueIdx,    setQueueIdx]    = useState(0);
+  const [cooldown,    setCooldown]    = useState(null); // { type: 'minute'|'hour', seconds }
   const pauseRef  = useRef(false);
   const cancelRef = useRef(false);
+
+  // ── Rate-limiting refs ───────────────────────────────────────────────────────
+  const sentThisMinuteRef = useRef(0);
+  const minuteWindowRef   = useRef(Date.now());
+  const sentThisHourRef   = useRef(0);
+  const hourWindowRef     = useRef(Date.now());
+
+  // ── Blast save ───────────────────────────────────────────────────────────────
+  const [blastTitle,  setBlastTitle]  = useState('');
+  const blastIdRef                    = useRef('');
 
   // ── Load image ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -523,7 +538,14 @@ function InvitationPanel({
     setImageLoaded(false);
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload  = () => { imageElRef.current = img; setImageLoaded(true); };
+    img.onload  = () => {
+      imageElRef.current = img;
+      const h = img.naturalHeight && img.naturalWidth
+        ? Math.round(600 * img.naturalHeight / img.naturalWidth)
+        : 400;
+      setCanvasHeight(Math.max(200, Math.min(h, 900)));
+      setImageLoaded(true);
+    };
     img.onerror = () => { imageElRef.current = null; setImageLoaded(false); };
     img.src = url;
   }, [invitationForm.imageUrl]);
@@ -627,16 +649,37 @@ function InvitationPanel({
   const overLimit         = totalCount > MAX_RECIPIENTS;
 
   // ── Queue ───────────────────────────────────────────────────────────────────
-  const startQueue = () => {
+  const startQueue = async () => {
     const recipients = getCheckedRecipients().slice(0, MAX_RECIPIENTS);
     if (!recipients.length) return;
     pauseRef.current  = false;
     cancelRef.current = false;
+    blastIdRef.current = '';
+
+    // Save blast to backend for history/report
+    try {
+      const form = invFormRef.current;
+      const res = await whatsappService.saveBlast({
+        title:        blastTitle.trim() || `Blast ${new Date().toLocaleDateString()}`,
+        message:      form.message || '',
+        imageUrl:     form.imageUrl || '',
+        includeRsvp:  form.includeRsvp,
+        rsvpYesLabel: form.rsvpYesLabel,
+        rsvpNoLabel:  form.rsvpNoLabel,
+        fontStyle:    fontStyleRef.current,
+        status:       'SENDING',
+        totalRecipients: recipients.length,
+        recipients:   recipients.map(r => ({ name: r.name, mobile: r.mobile, source: r.source, status: 'PENDING' })),
+      });
+      blastIdRef.current = res?.data?._id || '';
+    } catch (_) { /* blast save failure is non-blocking */ }
+
     setQueue(recipients.map(r => ({ ...r, status: 'pending', error: '' })));
     setQueueIdx(0);
     setQueueActive(true);
     setQueuePaused(false);
     setQueueDone(false);
+    setCooldown(null);
   };
 
   const pauseQueue  = () => { pauseRef.current = true;  setQueuePaused(true);  };
@@ -644,8 +687,9 @@ function InvitationPanel({
   const cancelQueue = () => { cancelRef.current = true; pauseRef.current = false; };
   const resetQueue  = () => {
     setQueue([]); setQueueActive(false); setQueuePaused(false);
-    setQueueDone(false); setQueueIdx(0);
+    setQueueDone(false); setQueueIdx(0); setCooldown(null);
     pauseRef.current = false; cancelRef.current = false;
+    blastIdRef.current = '';
   };
 
   // Capture stable refs so the async loop sees latest invitationForm / fontStyle
@@ -661,27 +705,85 @@ function InvitationPanel({
       const recipients = queue;
       let i = queueIdx;
 
-      while (i < recipients.length) {
-        if (cancelRef.current) { setQueueActive(false); setQueueDone(true); return; }
+      // Reset rate-limit windows for this blast run
+      sentThisMinuteRef.current = 0;
+      minuteWindowRef.current   = Date.now();
+      sentThisHourRef.current   = 0;
+      hourWindowRef.current     = Date.now();
+
+      const checkCancel = () => {
+        if (cancelRef.current) { setQueueActive(false); setQueueDone(true); setCooldown(null); return true; }
+        return false;
+      };
+      const waitWhilePaused = async () => {
         while (pauseRef.current) {
           await sleep(500);
-          if (cancelRef.current) { setQueueActive(false); setQueueDone(true); return; }
+          if (checkCancel()) return false;
+        }
+        return true;
+      };
+
+      while (i < recipients.length) {
+        if (checkCancel()) return;
+        if (!await waitWhilePaused()) return;
+
+        // ── Enforce hour cap ────────────────────────────────────────────
+        {
+          const now = Date.now();
+          if (now - hourWindowRef.current >= 3600000) {
+            sentThisHourRef.current = 0;
+            hourWindowRef.current   = now;
+          }
+          if (sentThisHourRef.current >= MAX_PER_HOUR) {
+            const waitUntil = hourWindowRef.current + 3600000;
+            while (Date.now() < waitUntil) {
+              if (checkCancel()) return;
+              if (!await waitWhilePaused()) return;
+              setCooldown({ type: 'hour', seconds: Math.ceil((waitUntil - Date.now()) / 1000) });
+              await sleep(1000);
+            }
+            sentThisHourRef.current = 0;
+            hourWindowRef.current   = Date.now();
+            setCooldown(null);
+          }
+        }
+
+        // ── Enforce minute cap ──────────────────────────────────────────
+        {
+          const now = Date.now();
+          if (now - minuteWindowRef.current >= 60000) {
+            sentThisMinuteRef.current = 0;
+            minuteWindowRef.current   = now;
+          }
+          if (sentThisMinuteRef.current >= MAX_PER_MINUTE) {
+            const waitUntil = minuteWindowRef.current + 60000;
+            while (Date.now() < waitUntil) {
+              if (checkCancel()) return;
+              if (!await waitWhilePaused()) return;
+              setCooldown({ type: 'minute', seconds: Math.ceil((waitUntil - Date.now()) / 1000) });
+              await sleep(1000);
+            }
+            sentThisMinuteRef.current = 0;
+            minuteWindowRef.current   = Date.now();
+            setCooldown(null);
+          }
         }
 
         setQueue(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'sending' } : item));
         setQueueIdx(i);
 
+        const recipientName = recipients[i].name;
         try {
-          // Build a personalised image with this recipient's name baked in
-          const personalisedUrl = await buildPersonalisedImageUrl(recipients[i].name);
-
+          const personalisedUrl = await buildPersonalisedImageUrl(recipientName);
           await sendServiceFn({
             ...invFormRef.current,
-            imageUrl:     personalisedUrl,   // ← name is printed ON the image
-            recipients:   [{ name: recipients[i].name, mobile: recipients[i].mobile, source: recipients[i].source }],
+            imageUrl:     personalisedUrl,
+            recipients:   [{ name: recipientName, mobile: recipients[i].mobile, source: recipients[i].source }],
             textPosition: fontStyleRef.current,
           });
           setQueue(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'delivered' } : item));
+          sentThisMinuteRef.current++;
+          sentThisHourRef.current++;
         } catch (err) {
           setQueue(prev => prev.map((item, idx) =>
             idx === i ? { ...item, status: 'failed', error: err?.response?.data?.message || 'Failed' } : item));
@@ -689,6 +791,25 @@ function InvitationPanel({
 
         i++;
         if (i < recipients.length && !cancelRef.current) await sleep(randDelay());
+      }
+
+      // ── Save blast report ────────────────────────────────────────────
+      if (blastIdRef.current) {
+        const finalQueue = queue; // snapshot — stale, use functional update instead
+        setQueue(prev => {
+          const recipientsResult = prev.map(r => ({
+            name: r.name, mobile: r.mobile, source: r.source,
+            status: r.status === 'delivered' ? 'SENT' : r.status === 'failed' ? 'FAILED' : 'PENDING',
+            error: r.error || '',
+          }));
+          whatsappService.updateBlast(blastIdRef.current, {
+            status: 'COMPLETED',
+            sentCount:   prev.filter(r => r.status === 'delivered').length,
+            failedCount: prev.filter(r => r.status === 'failed').length,
+            recipients:  recipientsResult,
+          }).catch(() => null);
+          return prev;
+        });
       }
 
       setQueueActive(false);
@@ -700,11 +821,14 @@ function InvitationPanel({
   }, [queueActive]);
 
   // ── Stats ───────────────────────────────────────────────────────────────────
-  const delivered = queue.filter(r => r.status === 'delivered').length;
-  const failed    = queue.filter(r => r.status === 'failed').length;
-  const pending   = queue.filter(r => r.status === 'pending').length;
-  const progress  = queue.length ? Math.round(((delivered + failed) / queue.length) * 100) : 0;
-  const etaSecs   = Math.round(pending * ((DELAY_MIN_S + DELAY_MAX_S) / 2));
+  const delivered    = queue.filter(r => r.status === 'delivered').length;
+  const failed       = queue.filter(r => r.status === 'failed').length;
+  const pending      = queue.filter(r => r.status === 'pending').length;
+  const progress     = queue.length ? Math.round(((delivered + failed) / queue.length) * 100) : 0;
+  const avgDelay     = (DELAY_MIN_S + DELAY_MAX_S) / 2;
+  // Add estimated hour-pause time
+  const hourPauses   = Math.floor(pending / MAX_PER_HOUR);
+  const etaSecs      = Math.round(pending * avgDelay + hourPauses * 3600);
 
   const accentColor = isBaileys ? 'warning' : 'primary';
 
@@ -720,46 +844,39 @@ function InvitationPanel({
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Each recipient gets a personalised image with their name printed on it.
-            Sends one message at a time with a {DELAY_MIN_S}–{DELAY_MAX_S}s random delay. Max {MAX_RECIPIENTS} per blast.
+            Rate-limited to {MAX_PER_MINUTE}/min · {MAX_PER_HOUR}/hour with {DELAY_MIN_S}–{DELAY_MAX_S}s random delay per message.
+            Max {MAX_RECIPIENTS} per blast.
           </Typography>
         </CardContent></Card>
 
-        {/* ── Event details ── */}
+        {/* ── Message ── */}
         <Card><CardContent>
-          <Typography fontWeight={700} sx={{ mb: 2 }}>Event Details</Typography>
+          <Typography fontWeight={700} sx={{ mb: 2 }}>Message</Typography>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField fullWidth label="Event Name" value={invitationForm.eventName}
-                onChange={e => setInvitationForm(p => ({ ...p, eventName: e.target.value }))} />
-            </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
-              <TextField fullWidth type="date" label="Date" InputLabelProps={{ shrink: true }}
-                value={invitationForm.date}
-                onChange={e => setInvitationForm(p => ({ ...p, date: e.target.value }))} />
-            </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
-              <TextField fullWidth type="time" label="Time" InputLabelProps={{ shrink: true }}
-                value={invitationForm.time}
-                onChange={e => setInvitationForm(p => ({ ...p, time: e.target.value }))} />
-            </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField fullWidth label="Venue" value={invitationForm.venue}
-                onChange={e => setInvitationForm(p => ({ ...p, venue: e.target.value }))} />
+              <TextField
+                fullWidth multiline minRows={4}
+                label="Message"
+                value={invitationForm.message}
+                onChange={e => setInvitationForm(p => ({ ...p, message: e.target.value }))}
+                helperText="Use {name} to personalise — it will be replaced with each recipient's name."
+                placeholder="Dear {name}, you are cordially invited…"
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <FormControlLabel
                 control={<Switch checked={!!invitationForm.includeRsvp} onChange={e => setInvitationForm(p => ({ ...p, includeRsvp: e.target.checked }))} color="success" />}
-                label={<Typography variant="body2" fontWeight={600}>Include RSVP Buttons (Yes / No)</Typography>}
+                label={<Typography variant="body2" fontWeight={600}>Include RSVP reply request</Typography>}
               />
             </Grid>
             {invitationForm.includeRsvp && (
               <>
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField fullWidth size="small" label="Yes Button Label" value={invitationForm.rsvpYesLabel}
+                  <TextField fullWidth size="small" label="Yes Label" value={invitationForm.rsvpYesLabel}
                     onChange={e => setInvitationForm(p => ({ ...p, rsvpYesLabel: e.target.value }))} />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField fullWidth size="small" label="No Button Label" value={invitationForm.rsvpNoLabel}
+                  <TextField fullWidth size="small" label="No Label" value={invitationForm.rsvpNoLabel}
                     onChange={e => setInvitationForm(p => ({ ...p, rsvpNoLabel: e.target.value }))} />
                 </Grid>
               </>
@@ -812,7 +929,7 @@ function InvitationPanel({
                   <canvas
                     ref={canvasRef}
                     width={600}
-                    height={400}
+                    height={canvasHeight}
                     style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
                   />
                 </Box>
@@ -1042,6 +1159,15 @@ function InvitationPanel({
               </Stack>
             </Stack>
 
+            {/* Rate-limit cooldown banner */}
+            {cooldown && (
+              <Alert severity="info" sx={{ mb: 1.5 }}>
+                {cooldown.type === 'hour'
+                  ? `⏸ Hour cap reached (${MAX_PER_HOUR}/hr). Resuming in ${fmtSecs(cooldown.seconds)}…`
+                  : `⏳ Minute cap reached (${MAX_PER_MINUTE}/min). Resuming in ${fmtSecs(cooldown.seconds)}…`}
+              </Alert>
+            )}
+
             {/* Progress bar */}
             <Box sx={{ mb: 1 }}>
               <Stack direction="row" justifyContent="space-between">
@@ -1050,7 +1176,7 @@ function InvitationPanel({
                 </Typography>
                 {queueActive && !queueDone && (
                   <Typography variant="caption" color="text.secondary">
-                    ETA ~{fmtSecs(etaSecs)} · delay {DELAY_MIN_S}–{DELAY_MAX_S}s per message
+                    ETA ~{fmtSecs(etaSecs)} · {DELAY_MIN_S}–{DELAY_MAX_S}s gap · max {MAX_PER_MINUTE}/min · {MAX_PER_HOUR}/hr
                   </Typography>
                 )}
                 {queueDone && (
@@ -1111,22 +1237,33 @@ function InvitationPanel({
           </CardContent></Card>
         )}
 
-        {/* ── Send button ── */}
+        {/* ── Blast title + send button ── */}
         {!queueActive && !queueDone && (
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography color="text.secondary" variant="body2">
-              {totalCount} recipient{totalCount !== 1 ? 's' : ''} selected
-              {overLimit && ` — only first ${MAX_RECIPIENTS} will be sent`}
-            </Typography>
-            <Button
-              variant="contained" color={accentColor}
-              size="large"
-              startIcon={<SendIcon />}
-              disabled={totalCount === 0 || !invitationForm.imageUrl}
-              onClick={startQueue}>
-              Start Sending {totalCount > 0 ? `(${Math.min(totalCount, MAX_RECIPIENTS)})` : ''}
-            </Button>
-          </Stack>
+          <Card><CardContent>
+            <Stack spacing={2}>
+              <TextField
+                fullWidth size="small"
+                label="Blast Title (saved to history)"
+                value={blastTitle}
+                onChange={e => setBlastTitle(e.target.value)}
+                placeholder={`Blast ${new Date().toLocaleDateString()}`}
+              />
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography color="text.secondary" variant="body2">
+                  {totalCount} recipient{totalCount !== 1 ? 's' : ''} selected
+                  {overLimit && ` — only first ${MAX_RECIPIENTS} will be sent`}
+                </Typography>
+                <Button
+                  variant="contained" color={accentColor}
+                  size="large"
+                  startIcon={<SendIcon />}
+                  disabled={totalCount === 0 || (!invitationForm.imageUrl && !invitationForm.message.trim())}
+                  onClick={startQueue}>
+                  Start Blast {totalCount > 0 ? `(${Math.min(totalCount, MAX_RECIPIENTS)})` : ''}
+                </Button>
+              </Stack>
+            </Stack>
+          </CardContent></Card>
         )}
 
         {/* After queue done — option to send again */}
@@ -1179,6 +1316,188 @@ function LogsPanel({ logs, isBaileys }) {
         : 'Incoming webhook messages, manual replies and auto replies.'}
       rows={logRows}
     />
+  );
+}
+
+// ── Blast History Panel ───────────────────────────────────────────────────────
+
+function BlastHistoryPanel({ blasts, onView, isBaileys }) {
+  const [selectedBlast, setSelectedBlast] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const handleView = async (blast) => {
+    setLoadingDetail(true);
+    try {
+      const res = await whatsappService.getBlast(blast._id);
+      setSelectedBlast(res.data);
+    } catch (_) { setSelectedBlast(blast); }
+    finally { setLoadingDetail(false); }
+  };
+
+  const accentColor = isBaileys ? 'warning' : 'primary';
+
+  if (selectedBlast) {
+    const recipients = selectedBlast.recipients || [];
+    const sent   = recipients.filter(r => r.status === 'SENT').length;
+    const failed = recipients.filter(r => r.status === 'FAILED').length;
+    const pending = recipients.filter(r => r.status === 'PENDING').length;
+    return (
+      <PageSurface>
+        <Stack spacing={2}>
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+              <Box>
+                <Typography variant="h6" fontWeight={800}>{selectedBlast.title || 'Blast Report'}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {new Date(selectedBlast.createdAt).toLocaleString()} · {selectedBlast.status}
+                </Typography>
+              </Box>
+              <Button size="small" variant="outlined" onClick={() => setSelectedBlast(null)}>← Back</Button>
+            </Stack>
+          </CardContent></Card>
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 6, md: 3 }}>
+              <Card><CardContent sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" fontWeight={800} color="text.primary">{selectedBlast.totalRecipients || recipients.length}</Typography>
+                <Typography variant="body2" color="text.secondary">Total</Typography>
+              </CardContent></Card>
+            </Grid>
+            <Grid size={{ xs: 6, md: 3 }}>
+              <Card><CardContent sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" fontWeight={800} color="success.main">{sent}</Typography>
+                <Typography variant="body2" color="text.secondary">Sent</Typography>
+              </CardContent></Card>
+            </Grid>
+            <Grid size={{ xs: 6, md: 3 }}>
+              <Card><CardContent sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" fontWeight={800} color="error.main">{failed}</Typography>
+                <Typography variant="body2" color="text.secondary">Failed</Typography>
+              </CardContent></Card>
+            </Grid>
+            <Grid size={{ xs: 6, md: 3 }}>
+              <Card><CardContent sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" fontWeight={800} color="text.secondary">{pending}</Typography>
+                <Typography variant="body2" color="text.secondary">Pending</Typography>
+              </CardContent></Card>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: selectedBlast.imageUrl ? 7 : 12 }}>
+              <Card><CardContent>
+                <Typography fontWeight={700} sx={{ mb: 1 }}>Message</Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                  {selectedBlast.message || '(no text message)'}
+                </Typography>
+                {selectedBlast.includeRsvp && (
+                  <Box sx={{ mt: 1.5 }}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={700}>RSVP Labels</Typography>
+                    <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                      <Chip label={selectedBlast.rsvpYesLabel} color="success" size="small" />
+                      <Chip label={selectedBlast.rsvpNoLabel} color="error" size="small" />
+                    </Stack>
+                  </Box>
+                )}
+              </CardContent></Card>
+            </Grid>
+            {selectedBlast.imageUrl && (
+              <Grid size={{ xs: 12, md: 5 }}>
+                <Card><CardContent>
+                  <Typography fontWeight={700} sx={{ mb: 1 }}>Image</Typography>
+                  <Box
+                    component="img"
+                    src={selectedBlast.imageUrl}
+                    alt="Blast image"
+                    sx={{ width: '100%', borderRadius: 1, objectFit: 'contain', maxHeight: 300 }}
+                  />
+                </CardContent></Card>
+              </Grid>
+            )}
+          </Grid>
+
+          {recipients.length > 0 && (
+            <Card><CardContent>
+              <Typography fontWeight={700} sx={{ mb: 1.5 }}>
+                Recipient Delivery Log ({recipients.length})
+              </Typography>
+              <Box sx={{ maxHeight: 400, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                {recipients.map((r, idx) => (
+                  <Stack key={idx} direction="row" alignItems="center" spacing={1.5}
+                    sx={{ px: 1.5, py: 0.75, borderBottom: idx < recipients.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                    <Typography variant="body2" sx={{ minWidth: 24, color: 'text.secondary' }}>{idx + 1}</Typography>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>{r.name || '-'}</Typography>
+                      <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
+                    </Box>
+                    <Chip size="small"
+                      label={r.status === 'SENT' ? '✅ Sent' : r.status === 'FAILED' ? '❌ Failed' : '⏳ Pending'}
+                      color={r.status === 'SENT' ? 'success' : r.status === 'FAILED' ? 'error' : 'default'} />
+                    {r.error && (
+                      <Tooltip title={r.error}>
+                        <Typography variant="caption" color="error" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.error}
+                        </Typography>
+                      </Tooltip>
+                    )}
+                  </Stack>
+                ))}
+              </Box>
+            </CardContent></Card>
+          )}
+        </Stack>
+      </PageSurface>
+    );
+  }
+
+  return (
+    <PageSurface>
+      <Stack spacing={2}>
+        <Card><CardContent>
+          <Typography variant="h6" fontWeight={800}>Blast History</Typography>
+          <Typography variant="body2" color="text.secondary">
+            All saved blast campaigns. Click a blast to view the full report.
+          </Typography>
+        </CardContent></Card>
+
+        {loadingDetail && <LinearProgress />}
+
+        {blasts.length === 0 ? (
+          <Card><CardContent>
+            <Typography color="text.secondary">No blasts saved yet. Start a blast from the Invitation tab.</Typography>
+          </CardContent></Card>
+        ) : (
+          <Card><CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+            {blasts.map((b, idx) => (
+              <Stack key={b._id} direction="row" alignItems="center" spacing={2}
+                sx={{
+                  px: 2, py: 1.5,
+                  borderBottom: idx < blasts.length - 1 ? '1px solid' : 'none',
+                  borderColor: 'divider',
+                }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography fontWeight={700}>{b.title || 'Blast'}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(b.createdAt).toLocaleString()} · {b.totalRecipients || 0} recipients
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip label={b.status} size="small"
+                    color={b.status === 'COMPLETED' ? 'success' : b.status === 'SENDING' ? 'primary' : 'default'} />
+                  <Typography variant="body2" color="success.main" fontWeight={600}>✅ {b.sentCount || 0}</Typography>
+                  {(b.failedCount > 0) && (
+                    <Typography variant="body2" color="error" fontWeight={600}>❌ {b.failedCount}</Typography>
+                  )}
+                  <Button size="small" variant="contained" color={accentColor} onClick={() => handleView(b)}>
+                    View Report
+                  </Button>
+                </Stack>
+              </Stack>
+            ))}
+          </CardContent></Card>
+        )}
+      </Stack>
+    </PageSurface>
   );
 }
 
@@ -1479,6 +1798,9 @@ export default function WhatsAppPage() {
   const [baileysFileName,           setBaileysFileName]           = useState('');
   const [baileysLogs,               setBaileysLogs]               = useState([]);
 
+  // ── Blast history state ───────────────────────────────────────────────────
+  const [blasts, setBlasts] = useState([]);
+
   // ── Loaders ───────────────────────────────────────────────────────────────
   const loadOfficial = async () => {
     setLoading(true);
@@ -1539,6 +1861,10 @@ export default function WhatsAppPage() {
     setBaileysConversation(Array.isArray(data) ? data : []);
     await whatsappService.baileysMarkRead(key).catch(() => null);
   };
+
+  useEffect(() => {
+    whatsappService.listBlasts().then(r => setBlasts(Array.isArray(r.data) ? r.data : [])).catch(() => null);
+  }, []);
 
   useEffect(() => { if (useBaileys) loadBaileys(); else loadOfficial(); }, [useBaileys]);
   useEffect(() => { if (!useBaileys) loadOfficialConversation(selectedConversationKey); }, [selectedConversationKey]);
@@ -1768,7 +2094,10 @@ export default function WhatsAppPage() {
 
       <PageSurface sx={{ mb: 2 }}>
         <Tabs
-          value={tab} onChange={(_, v) => setTab(v)}
+          value={tab} onChange={(_, v) => {
+            setTab(v);
+            if (v === 'blasts') whatsappService.listBlasts().then(r => setBlasts(Array.isArray(r.data) ? r.data : [])).catch(() => null);
+          }}
           variant="scrollable" allowScrollButtonsMobile
           sx={{ minHeight: 0, '& .MuiTab-root': { minHeight: 42 } }}
           textColor={useBaileys ? 'warning' : 'primary'}
@@ -1816,6 +2145,7 @@ export default function WhatsAppPage() {
           fileName={baileysFileName}               setFileName={setBaileysFileName}
         />
       )}
+      {useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys />}
       {useBaileys && tab === 'logs'  && <LogsPanel logs={baileysLogs} isBaileys />}
       {useBaileys && tab === 'setup' && (
         <BaileysSetup
@@ -1868,6 +2198,7 @@ export default function WhatsAppPage() {
           fileName={fileName}                     setFileName={setFileName}
         />
       )}
+      {!useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys={false} />}
       {!useBaileys && tab === 'templates' && (
         <CollectionSection title="Templates" subtitle="Approved WhatsApp message templates." rows={templateRows} />
       )}

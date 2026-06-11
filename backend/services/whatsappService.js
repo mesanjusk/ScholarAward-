@@ -163,8 +163,29 @@ async function sendTextMessage({ to, body }) {
   return data;
 }
 
+async function sendImageMessage({ to, mediaId, caption = '' }) {
+  const token         = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneNumberId || !to || !mediaId) {
+    return { skipped: true, reason: 'Missing config or mediaId' };
+  }
+  const payload = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'image',
+    image: { id: mediaId, caption },
+  };
+  const { data } = await axios.post(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`,
+    payload,
+    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+  );
+  return data;
+}
+
 module.exports = {
   uploadWhatsAppMedia,
   sendTemplateMessage,
-  sendTextMessage
+  sendTextMessage,
+  sendImageMessage,
 };
