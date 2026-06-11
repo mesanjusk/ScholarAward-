@@ -530,6 +530,7 @@ function InvitationPanel({
   // ── Blast save ───────────────────────────────────────────────────────────────
   const [blastTitle,  setBlastTitle]  = useState('');
   const blastIdRef                    = useRef('');
+  const localResultsRef               = useRef([]);
 
   // ── Load image ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -689,7 +690,7 @@ function InvitationPanel({
     setQueue([]); setQueueActive(false); setQueuePaused(false);
     setQueueDone(false); setQueueIdx(0); setCooldown(null);
     pauseRef.current = false; cancelRef.current = false;
-    blastIdRef.current = '';
+    blastIdRef.current = ''; localResultsRef.current = [];
   };
 
   // Capture stable refs so the async loop sees latest invitationForm / fontStyle
@@ -724,6 +725,7 @@ function InvitationPanel({
       };
 
       const localResults = []; // track results locally — avoids stale React state
+      localResultsRef.current = localResults;
 
       while (i < recipients.length) {
         if (checkCancel()) return;
@@ -819,8 +821,13 @@ function InvitationPanel({
   }, [queueActive]);
 
   // ── Stats ───────────────────────────────────────────────────────────────────
-  const delivered    = queue.filter(r => r.status === 'delivered').length;
-  const failed       = queue.filter(r => r.status === 'failed').length;
+  // When done, read from localResultsRef so the final tally is never stale
+  const delivered = queueDone
+    ? localResultsRef.current.filter(r => r.status === 'SENT').length
+    : queue.filter(r => r.status === 'delivered').length;
+  const failed = queueDone
+    ? localResultsRef.current.filter(r => r.status === 'FAILED').length
+    : queue.filter(r => r.status === 'failed').length;
   const pending      = queue.filter(r => r.status === 'pending').length;
   const progress     = queue.length ? Math.round(((delivered + failed) / queue.length) * 100) : 0;
   const avgDelay     = (DELAY_MIN_S + DELAY_MAX_S) / 2;
@@ -1192,19 +1199,27 @@ function InvitationPanel({
 
             {/* Queue table */}
             <Box sx={{ maxHeight: 280, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-              {queue.map((item, idx) => (
+              {queue.map((item, idx) => {
+                // When done, use localResultsRef for accurate final status
+                const finalStatus = queueDone && localResultsRef.current[idx]
+                  ? (localResultsRef.current[idx].status === 'SENT' ? 'delivered' : 'failed')
+                  : item.status;
+                const finalError = queueDone && localResultsRef.current[idx]
+                  ? localResultsRef.current[idx].error
+                  : item.error;
+                return (
                 <Stack key={idx} direction="row" alignItems="center" spacing={1.5}
                   sx={{
                     px: 1.5, py: 0.75,
                     borderBottom: idx < queue.length - 1 ? '1px solid' : 'none',
                     borderColor: 'divider',
-                    bgcolor: item.status === 'sending' ? (isBaileys ? '#fffde7' : '#e3f2fd') : 'transparent',
+                    bgcolor: finalStatus === 'sending' ? (isBaileys ? '#fffde7' : '#e3f2fd') : 'transparent',
                   }}>
                   <Typography variant="body2" sx={{ minWidth: 24, color: 'text.secondary' }}>
                     {idx + 1}
                   </Typography>
                   <Box sx={{ flex: 1 }}>
-                    <Typography variant="body2" fontWeight={item.status === 'sending' ? 700 : 400}>
+                    <Typography variant="body2" fontWeight={finalStatus === 'sending' ? 700 : 400}>
                       {item.name}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">{item.mobile}</Typography>
@@ -1212,25 +1227,26 @@ function InvitationPanel({
                   <Chip
                     size="small"
                     label={
-                      item.status === 'pending'   ? '⏳ Pending'   :
-                      item.status === 'sending'   ? '🔄 Sending'   :
-                      item.status === 'delivered' ? '✅ Delivered' : '❌ Failed'
+                      finalStatus === 'pending'   ? '⏳ Pending'   :
+                      finalStatus === 'sending'   ? '🔄 Sending'   :
+                      finalStatus === 'delivered' ? '✅ Delivered' : '❌ Failed'
                     }
                     color={
-                      item.status === 'delivered' ? 'success' :
-                      item.status === 'failed'    ? 'error'   :
-                      item.status === 'sending'   ? (isBaileys ? 'warning' : 'primary') : 'default'
+                      finalStatus === 'delivered' ? 'success' :
+                      finalStatus === 'failed'    ? 'error'   :
+                      finalStatus === 'sending'   ? (isBaileys ? 'warning' : 'primary') : 'default'
                     }
                   />
-                  {item.status === 'failed' && item.error && (
-                    <Tooltip title={item.error}>
+                  {finalStatus === 'failed' && finalError && (
+                    <Tooltip title={finalError}>
                       <Typography variant="caption" color="error" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {item.error}
+                        {finalError}
                       </Typography>
                     </Tooltip>
                   )}
                 </Stack>
-              ))}
+                );
+              })}
             </Box>
           </CardContent></Card>
         )}
