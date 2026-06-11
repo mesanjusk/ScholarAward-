@@ -16,6 +16,12 @@ const whatsappService = {
   sendText:            (payload)    => api.post('/whatsapp/send-text', payload),
   sendInvitation:      (payload)    => api.post('/whatsapp/send-invitation', payload),
 
+  // Blast campaigns
+  saveBlast:           (payload)    => api.post('/whatsapp/blasts', payload),
+  listBlasts:          ()           => api.get('/whatsapp/blasts'),
+  getBlast:            (id)         => api.get(`/whatsapp/blasts/${id}`),
+  updateBlast:         (id, data)   => api.patch(`/whatsapp/blasts/${id}`, data),
+
   // ── Baileys (unofficial) ──────────────────────────────────────────────────
   baileysGetStatus:    ()           => api.get('/baileys/status'),
   baileysConnect:      ()           => api.post('/baileys/connect'),
