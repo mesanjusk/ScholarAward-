@@ -873,22 +873,28 @@ function InvitationPanel({
       <Stack spacing={1.5}>
 
         {/* ── Header + Load Campaign ── */}
-        <Card sx={{ borderRadius: 3 }}><CardContent sx={{ pb: '12px !important' }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
-            <Box>
-              <Typography variant="h6" fontWeight={800}>
-                {isBaileys ? '🐝 Invitation Blast' : '📨 Invitation Blast'}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Max {MAX_PER_MINUTE}/min · {MAX_PER_HOUR}/hr · {DELAY_MIN_S}–{DELAY_MAX_S}s gap
-              </Typography>
-            </Box>
+        <Card sx={{ borderRadius: 3 }}><CardContent sx={{ py: '10px !important', px: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="subtitle1" fontWeight={800}>
+              {isBaileys ? '🐝 Invitation Blast' : '📨 Invitation Blast'}
+            </Typography>
             {blasts.length > 0 && (
-              <Button variant="outlined" size="small" startIcon={<HistoryIcon />}
-                color={accentColor} onClick={() => setLoadDialogOpen(true)}
-                sx={{ minWidth: 160 }}>
-                Load Previous
-              </Button>
+              <Tooltip title="Load previous campaign">
+                <Button variant="outlined" size="small" startIcon={<HistoryIcon />}
+                  color={accentColor} onClick={() => setLoadDialogOpen(true)}
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+                  Load Previous
+                </Button>
+              </Tooltip>
+            )}
+            {blasts.length > 0 && (
+              <Tooltip title="Load previous campaign">
+                <Button variant="outlined" size="small" color={accentColor}
+                  onClick={() => setLoadDialogOpen(true)}
+                  sx={{ display: { xs: 'inline-flex', sm: 'none' }, minWidth: 0, px: 1 }}>
+                  <HistoryIcon fontSize="small" />
+                </Button>
+              </Tooltip>
             )}
           </Stack>
         </CardContent></Card>
@@ -1318,14 +1324,18 @@ function InvitationPanel({
                   {totalCount} recipient{totalCount !== 1 ? 's' : ''} selected
                   {overLimit && ` — only first ${MAX_RECIPIENTS} will be sent`}
                 </Typography>
-                <Button
-                  variant="contained" color={accentColor}
-                  size="large"
-                  startIcon={<SendIcon />}
-                  disabled={totalCount === 0 || (!invitationForm.imageUrl && !invitationForm.message.trim())}
-                  onClick={startQueue}>
-                  Start Blast {totalCount > 0 ? `(${Math.min(totalCount, MAX_RECIPIENTS)})` : ''}
-                </Button>
+                <Tooltip title={`Max ${MAX_PER_MINUTE}/min · ${MAX_PER_HOUR}/hr · ${DELAY_MIN_S}–${DELAY_MAX_S}s gap`}>
+                  <span>
+                    <Button
+                      variant="contained" color={accentColor}
+                      size="large"
+                      startIcon={<SendIcon />}
+                      disabled={totalCount === 0 || (!invitationForm.imageUrl && !invitationForm.message.trim())}
+                      onClick={startQueue}>
+                      Start Blast {totalCount > 0 ? `(${Math.min(totalCount, MAX_RECIPIENTS)})` : ''}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Stack>
             </Stack>
           </CardContent></Card>
@@ -2144,18 +2154,16 @@ export default function WhatsAppPage() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Box sx={{ pb: 3 }}>
-      <PageHeader
-        eyebrow="Communication"
-        title="WhatsApp Management"
-        subtitle="Switch between Official Cloud API and Baileys with separate inboxes, auto-reply, invitation, and QR-based connection."
-        chips={[
-          { label: useBaileys ? '🐝 Baileys Mode' : '✅ Official API', color: useBaileys ? 'warning' : 'success' },
-          { label: useBaileys ? `${baileysInbox.length} Conversations` : `${inbox.length} Conversations`, color: 'success' },
-          ...(!useBaileys
-            ? [{ label: `${templates.length} Templates` }, { label: `${rules.length} Rules` }]
-            : [{ label: `${baileysRules.length} Rules` }]),
-        ]}
-      />
+      {!invitationOnly && (
+        <PageHeader
+          eyebrow="Communication"
+          title="WhatsApp Management"
+          chips={[
+            { label: useBaileys ? '🐝 Baileys' : '✅ Official API', color: useBaileys ? 'warning' : 'success' },
+            { label: `${useBaileys ? baileysInbox.length : inbox.length} Chats`, color: 'success' },
+          ]}
+        />
+      )}
 
       {!invitationOnly && (
         <ProviderToggle useBaileys={useBaileys} onToggle={handleToggle} baileysStatus={baileysStatus?.status} />
