@@ -5,7 +5,8 @@ const { emitEvent }  = require('../services/socket');
 const baileysService = require('../services/baileysService');
 
 function normalizePhone(value) {
-  return String(value || '').replace(/[^\d]/g, '').trim();
+  const d = String(value || '').replace(/[^\d]/g, '').trim();
+  return d.length === 10 ? '91' + d : d;
 }
 function getConversationKey(phone) {
   return normalizePhone(phone);

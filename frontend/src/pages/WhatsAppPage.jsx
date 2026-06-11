@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
+  Accordion, AccordionDetails, AccordionSummary,
   Alert, Avatar, Box, Button, Card, CardContent, Checkbox, Chip,
   CircularProgress, Divider, FormControlLabel, Grid, LinearProgress,
   List, ListItemButton, ListItemText, MenuItem, Stack, Switch,
   Tab, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material';
-import AddIcon          from '@mui/icons-material/Add';
-import SendIcon         from '@mui/icons-material/Send';
-import UploadFileIcon   from '@mui/icons-material/UploadFile';
-import LinkIcon         from '@mui/icons-material/Link';
-import LinkOffIcon      from '@mui/icons-material/LinkOff';
-import QrCode2Icon      from '@mui/icons-material/QrCode2';
-import PauseIcon        from '@mui/icons-material/Pause';
-import PlayArrowIcon    from '@mui/icons-material/PlayArrow';
-import StopIcon         from '@mui/icons-material/Stop';
-import DownloadIcon     from '@mui/icons-material/Download';
+import AddIcon              from '@mui/icons-material/Add';
+import SendIcon             from '@mui/icons-material/Send';
+import UploadFileIcon       from '@mui/icons-material/UploadFile';
+import LinkIcon             from '@mui/icons-material/Link';
+import LinkOffIcon          from '@mui/icons-material/LinkOff';
+import QrCode2Icon          from '@mui/icons-material/QrCode2';
+import PauseIcon            from '@mui/icons-material/Pause';
+import PlayArrowIcon        from '@mui/icons-material/PlayArrow';
+import StopIcon             from '@mui/icons-material/Stop';
+import DownloadIcon         from '@mui/icons-material/Download';
+import ExpandMoreIcon       from '@mui/icons-material/ExpandMore';
 import NavigateNextIcon     from '@mui/icons-material/NavigateNext';
 import NavigateBeforeIcon   from '@mui/icons-material/NavigateBefore';
+import HistoryIcon          from '@mui/icons-material/History';
 import PageHeader    from '../components/PageHeader';
 import PageSurface   from '../components/PageSurface';
 import ResponsiveDialog from '../components/ResponsiveDialog';
@@ -105,7 +108,10 @@ const MAX_PER_HOUR    = 150;   // WhatsApp anti-ban: max 150 per hour
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const normalizePhone   = (v) => String(v || '').replace(/[^\d]/g, '').trim();
+const normalizePhone   = (v) => {
+  const d = String(v || '').replace(/[^\d]/g, '').trim();
+  return d.length === 10 ? '91' + d : d;   // auto-prefix India code
+};
 const formatWhen       = (v) => v ? new Date(v).toLocaleString() : '-';
 const conversationName = (item) => item?.contactName || item?.name || item?.phone || 'Unknown';
 const sleep            = (ms) => new Promise(r => setTimeout(r, ms));
@@ -502,6 +508,7 @@ function InvitationPanel({
   onUploadImage, uploadingImage,
   sendServiceFn,
   fileName, setFileName,
+  blasts = [],
 }) {
   // ── Canvas / drag state ─────────────────────────────────────────────────────
   const canvasRef      = useRef(null);
@@ -511,13 +518,17 @@ function InvitationPanel({
   const [imageLoaded,  setImageLoaded]  = useState(false);
   const [canvasHeight, setCanvasHeight] = useState(400);
 
+  // ── Accordion state ─────────────────────────────────────────────────────────
+  const [expanded, setExpanded] = useState('image');
+  const handleAccordion = (panel) => (_, isExp) => setExpanded(isExp ? panel : false);
+
   // ── Queue state ─────────────────────────────────────────────────────────────
   const [queue,       setQueue]       = useState([]);
   const [queueActive, setQueueActive] = useState(false);
   const [queuePaused, setQueuePaused] = useState(false);
   const [queueDone,   setQueueDone]   = useState(false);
   const [queueIdx,    setQueueIdx]    = useState(0);
-  const [cooldown,    setCooldown]    = useState(null); // { type: 'minute'|'hour', seconds }
+  const [cooldown,    setCooldown]    = useState(null);
   const pauseRef  = useRef(false);
   const cancelRef = useRef(false);
 
@@ -527,10 +538,26 @@ function InvitationPanel({
   const sentThisHourRef   = useRef(0);
   const hourWindowRef     = useRef(Date.now());
 
-  // ── Blast save ───────────────────────────────────────────────────────────────
-  const [blastTitle,  setBlastTitle]  = useState('');
-  const blastIdRef                    = useRef('');
-  const localResultsRef               = useRef([]);
+  // ── Blast save / load campaign ───────────────────────────────────────────────
+  const [blastTitle,     setBlastTitle]     = useState('');
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const blastIdRef      = useRef('');
+  const localResultsRef = useRef([]);
+
+  const loadCampaign = (blast) => {
+    setInvitationForm(p => ({
+      ...p,
+      imageUrl:     blast.imageUrl     || p.imageUrl,
+      message:      blast.message      || p.message,
+      includeRsvp:  blast.includeRsvp  ?? p.includeRsvp,
+      rsvpYesLabel: blast.rsvpYesLabel || p.rsvpYesLabel,
+      rsvpNoLabel:  blast.rsvpNoLabel  || p.rsvpNoLabel,
+    }));
+    if (blast.fontStyle) setFontStyle(blast.fontStyle);
+    setBlastTitle(blast.title || '');
+    setLoadDialogOpen(false);
+    setExpanded('image');
+  };
 
   // ── Load image ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -598,8 +625,8 @@ function InvitationPanel({
   // ── Helpers ─────────────────────────────────────────────────────────────────
   const getCheckedRecipients = () =>
     invitationForm.recipientMode === 'single'
-      ? [{ name: invitationForm.singleName || 'Guest', mobile: invitationForm.singleNumber, source: 'MANUAL' }]
-      : selectedRecipients.filter(r => r.checked !== false);
+      ? [{ name: invitationForm.singleName || 'Guest', mobile: normalizePhone(invitationForm.singleNumber), source: 'MANUAL' }]
+      : selectedRecipients.filter(r => r.checked !== false).map(r => ({ ...r, mobile: normalizePhone(r.mobile) }));
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -835,308 +862,330 @@ function InvitationPanel({
   const hourPauses   = Math.floor(pending / MAX_PER_HOUR);
   const etaSecs      = Math.round(pending * avgDelay + hourPauses * 3600);
 
-  const accentColor = isBaileys ? 'warning' : 'primary';
+  const accentColor  = isBaileys ? 'warning' : 'primary';
+  const accentBgHex  = isBaileys ? '#fffde7' : '#e3f2fd';
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <PageSurface>
-      <Stack spacing={2}>
+    <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
+      <Stack spacing={1.5}>
 
-        {/* ── Header ── */}
-        <Card><CardContent>
-          <Typography variant="h6" fontWeight={800}>
-            {isBaileys ? '🐝 Baileys Invitation Blast' : '📨 Invitation Blast'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Each recipient gets a personalised image with their name printed on it.
-            Rate-limited to {MAX_PER_MINUTE}/min · {MAX_PER_HOUR}/hour with {DELAY_MIN_S}–{DELAY_MAX_S}s random delay per message.
-            Max {MAX_RECIPIENTS} per blast.
-          </Typography>
-        </CardContent></Card>
-
-        {/* ── Message ── */}
-        <Card><CardContent>
-          <Typography fontWeight={700} sx={{ mb: 2 }}>Message</Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth multiline minRows={4}
-                label="Message"
-                value={invitationForm.message}
-                onChange={e => setInvitationForm(p => ({ ...p, message: e.target.value }))}
-                helperText="Use {name} to personalise — it will be replaced with each recipient's name."
-                placeholder="Dear {name}, you are cordially invited…"
-              />
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <FormControlLabel
-                control={<Switch checked={!!invitationForm.includeRsvp} onChange={e => setInvitationForm(p => ({ ...p, includeRsvp: e.target.checked }))} color="success" />}
-                label={<Typography variant="body2" fontWeight={600}>Include RSVP reply request</Typography>}
-              />
-            </Grid>
-            {invitationForm.includeRsvp && (
-              <>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField fullWidth size="small" label="Yes Label" value={invitationForm.rsvpYesLabel}
-                    onChange={e => setInvitationForm(p => ({ ...p, rsvpYesLabel: e.target.value }))} />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField fullWidth size="small" label="No Label" value={invitationForm.rsvpNoLabel}
-                    onChange={e => setInvitationForm(p => ({ ...p, rsvpNoLabel: e.target.value }))} />
-                </Grid>
-              </>
-            )}
-          </Grid>
-        </CardContent></Card>
-
-        {/* ── Image + Draggable Canvas Preview ── */}
-        <Card><CardContent>
-          <Typography fontWeight={700} sx={{ mb: 2 }}>Invitation Image & Preview</Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 8 }}>
-              <TextField fullWidth label="Image URL" value={invitationForm.imageUrl}
-                onChange={e => setInvitationForm(p => ({ ...p, imageUrl: e.target.value }))}
-                helperText="Paste a public image URL, or upload below." />
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <Button component="label" variant="outlined" fullWidth sx={{ height: 56 }}
-                startIcon={uploadingImage ? <CircularProgress size={16} /> : <UploadFileIcon />}
-                disabled={uploadingImage}>
-                {uploadingImage ? 'Uploading…' : 'Upload Image'}
-                <input hidden accept="image/*" type="file" onChange={onUploadImage} />
+        {/* ── Header + Load Campaign ── */}
+        <Card sx={{ borderRadius: 3 }}><CardContent sx={{ pb: '12px !important' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
+            <Box>
+              <Typography variant="h6" fontWeight={800}>
+                {isBaileys ? '🐝 Invitation Blast' : '📨 Invitation Blast'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Max {MAX_PER_MINUTE}/min · {MAX_PER_HOUR}/hr · {DELAY_MIN_S}–{DELAY_MAX_S}s gap
+              </Typography>
+            </Box>
+            {blasts.length > 0 && (
+              <Button variant="outlined" size="small" startIcon={<HistoryIcon />}
+                color={accentColor} onClick={() => setLoadDialogOpen(true)}
+                sx={{ minWidth: 160 }}>
+                Load Previous
               </Button>
-            </Grid>
-
-            {invitationForm.imageUrl && (
-              <Grid size={{ xs: 12 }}>
-                {/* Drag hint */}
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                  ✋ Drag or tap anywhere on the image to reposition the name text
-                </Typography>
-
-                {/* Canvas — drag/touch enabled */}
-                <Box
-                  sx={{
-                    border: '2px solid', borderColor: 'divider', borderRadius: 2,
-                    overflow: 'hidden', bgcolor: '#111',
-                    display: 'inline-block', maxWidth: '100%',
-                    cursor: 'crosshair', userSelect: 'none',
-                    touchAction: 'none',
-                  }}
-                  onMouseDown={onDragStart}
-                  onMouseMove={onDragMove}
-                  onMouseUp={onDragEnd}
-                  onMouseLeave={onDragEnd}
-                  onTouchStart={onDragStart}
-                  onTouchMove={onDragMove}
-                  onTouchEnd={onDragEnd}
-                >
-                  <canvas
-                    ref={canvasRef}
-                    width={600}
-                    height={canvasHeight}
-                    style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
-                  />
-                </Box>
-
-                {/* Position readout */}
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  Position: {Math.round(fontStyle.x * 100)}% left · {Math.round(fontStyle.y * 100)}% top
-                </Typography>
-
-                {/* Preview nav */}
-                {invitationForm.recipientMode !== 'single' && checkedRecipients.length > 0 && (
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
-                    <Button size="small" variant="outlined" startIcon={<NavigateBeforeIcon />}
-                      disabled={previewIdx === 0}
-                      onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}>
-                      Prev
-                    </Button>
-                    <Typography variant="body2" color="text.secondary">
-                      {previewIdx + 1} / {checkedRecipients.length} — <strong>{checkedRecipients[previewIdx]?.name}</strong>
-                    </Typography>
-                    <Button size="small" variant="outlined" endIcon={<NavigateNextIcon />}
-                      disabled={previewIdx >= checkedRecipients.length - 1}
-                      onClick={() => setPreviewIdx(i => Math.min(checkedRecipients.length - 1, i + 1))}>
-                      Next
-                    </Button>
-                    <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
-                      onClick={handleDownloadPreview}>
-                      Download
-                    </Button>
-                  </Stack>
-                )}
-                {invitationForm.recipientMode === 'single' && (
-                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                    <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
-                      onClick={handleDownloadPreview}>
-                      Download Preview
-                    </Button>
-                  </Stack>
-                )}
-                {!imageLoaded && invitationForm.imageUrl && (
-                  <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
-                    ⚠️ Image could not be loaded. Make sure the URL is publicly accessible (CORS-friendly).
-                  </Typography>
-                )}
-              </Grid>
             )}
-          </Grid>
+          </Stack>
         </CardContent></Card>
 
-        {/* ── Font / Text Style Controls (no verticalPos dropdown — drag instead) ── */}
-        <Card><CardContent>
-          <Typography fontWeight={700} sx={{ mb: 2 }}>Text Style on Image</Typography>
-          <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, md: 3 }}>
-              <TextField fullWidth select label="Font Family" value={fontStyle.fontFamily}
-                onChange={e => setFontStyle(p => ({ ...p, fontFamily: e.target.value }))}>
-                {FONT_FAMILIES.map(f => <MenuItem key={f.value} value={f.value}>{f.label}</MenuItem>)}
-              </TextField>
-            </Grid>
-            <Grid size={{ xs: 6, md: 2 }}>
-              <TextField fullWidth type="number" label="Font Size (px)" value={fontStyle.fontSize}
-                inputProps={{ min: 10, max: 200 }}
-                onChange={e => setFontStyle(p => ({ ...p, fontSize: Number(e.target.value) }))} />
-            </Grid>
-            <Grid size={{ xs: 6, md: 2 }}>
+        {/* ── Load Campaign Dialog ── */}
+        <ResponsiveDialog open={loadDialogOpen} onClose={() => setLoadDialogOpen(false)} fullWidth maxWidth="sm">
+          <CardContent>
+            <Typography variant="h6" fontWeight={800} sx={{ mb: 2 }}>Load Previous Campaign</Typography>
+            <Stack spacing={1}>
+              {blasts.slice(0, 20).map(b => (
+                <Card key={b._id} variant="outlined" sx={{ cursor: 'pointer', '&:hover': { bgcolor: accentBgHex } }}
+                  onClick={() => loadCampaign(b)}>
+                  <CardContent sx={{ py: '10px !important' }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Box>
+                        <Typography fontWeight={700} variant="body2">{b.title || 'Untitled'}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(b.createdAt).toLocaleDateString()} · {b.totalRecipients || 0} recipients
+                          {b.imageUrl && ' · 🖼 Image'}
+                          {b.message && ` · 💬 ${b.message.slice(0, 30)}…`}
+                        </Typography>
+                      </Box>
+                      <Chip label={b.status} size="small"
+                        color={b.status === 'COMPLETED' ? 'success' : 'default'} />
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+            <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+              <Button onClick={() => setLoadDialogOpen(false)}>Cancel</Button>
+            </Stack>
+          </CardContent>
+        </ResponsiveDialog>
+
+        {/* ══ ACCORDION 1 — Image & Preview ══ */}
+        <Accordion expanded={expanded === 'image'} onChange={handleAccordion('image')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ borderRadius: 3 }}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={22}>🖼</Typography>
               <Box>
-                <Typography variant="caption" color="text.secondary">Font Color</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                  <input
-                    type="color"
-                    value={fontStyle.color}
-                    onChange={e => setFontStyle(p => ({ ...p, color: e.target.value }))}
-                    style={{ width: 48, height: 40, border: 'none', cursor: 'pointer', borderRadius: 4 }}
-                  />
-                  <Typography variant="body2">{fontStyle.color}</Typography>
-                </Box>
+                <Typography fontWeight={700}>Image &amp; Name Preview</Typography>
+                {invitationForm.imageUrl
+                  ? <Typography variant="caption" color="success.main">✓ Image set</Typography>
+                  : <Typography variant="caption" color="text.secondary">Upload or paste URL</Typography>}
               </Box>
-            </Grid>
-            <Grid size={{ xs: 12, md: 5 }}>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
-                <Button size="small"
-                  variant={fontStyle.fontWeight === 'bold' ? 'contained' : 'outlined'}
-                  color={accentColor}
-                  onClick={() => setFontStyle(p => ({ ...p, fontWeight: p.fontWeight === 'bold' ? 'normal' : 'bold' }))}>
-                  <strong>B</strong>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 8 }}>
+                <TextField fullWidth size="small" label="Image URL" value={invitationForm.imageUrl}
+                  onChange={e => setInvitationForm(p => ({ ...p, imageUrl: e.target.value }))}
+                  helperText="Paste a Cloudinary/public URL, or upload below." />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <Button component="label" variant="outlined" fullWidth sx={{ height: 40 }}
+                  startIcon={uploadingImage ? <CircularProgress size={16} /> : <UploadFileIcon />}
+                  disabled={uploadingImage} color={accentColor}>
+                  {uploadingImage ? 'Uploading…' : 'Upload'}
+                  <input hidden accept="image/*" type="file" onChange={onUploadImage} />
                 </Button>
-                {['left', 'center', 'right'].map(a => (
-                  <Button key={a} size="small"
-                    variant={fontStyle.textAlign === a ? 'contained' : 'outlined'}
-                    color={accentColor}
-                    onClick={() => setFontStyle(p => ({ ...p, textAlign: a }))}>
-                    {a === 'left' ? '⬅' : a === 'center' ? '↔' : '➡'}
+              </Grid>
+
+              {invitationForm.imageUrl && (
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                    ✋ Drag / tap on image to place name text
+                  </Typography>
+                  <Box sx={{
+                    border: '2px solid', borderColor: 'divider', borderRadius: 2,
+                    overflow: 'hidden', bgcolor: '#111', width: '100%',
+                    cursor: 'crosshair', userSelect: 'none', touchAction: 'none',
+                  }}
+                    onMouseDown={onDragStart} onMouseMove={onDragMove}
+                    onMouseUp={onDragEnd} onMouseLeave={onDragEnd}
+                    onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd}
+                  >
+                    <canvas ref={canvasRef} width={600} height={canvasHeight}
+                      style={{ display: 'block', width: '100%', height: 'auto' }} />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Name at {Math.round(fontStyle.x * 100)}% · {Math.round(fontStyle.y * 100)}%
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                    {invitationForm.recipientMode !== 'single' && checkedRecipients.length > 1 && (<>
+                      <Button size="small" variant="outlined" startIcon={<NavigateBeforeIcon />}
+                        disabled={previewIdx === 0}
+                        onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}>Prev</Button>
+                      <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                        {previewIdx + 1}/{checkedRecipients.length} · <strong>{checkedRecipients[previewIdx]?.name}</strong>
+                      </Typography>
+                      <Button size="small" variant="outlined" endIcon={<NavigateNextIcon />}
+                        disabled={previewIdx >= checkedRecipients.length - 1}
+                        onClick={() => setPreviewIdx(i => Math.min(checkedRecipients.length - 1, i + 1))}>Next</Button>
+                    </>)}
+                    <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                      onClick={handleDownloadPreview}>Download</Button>
+                  </Stack>
+                  {!imageLoaded && (
+                    <Typography variant="caption" color="error">⚠️ Image not loaded — check URL / CORS.</Typography>
+                  )}
+                </Grid>
+              )}
+            </Grid>
+          </AccordionDetails>
+        </Accordion>
+
+        {/* ══ ACCORDION 2 — Text Style ══ */}
+        <Accordion expanded={expanded === 'style'} onChange={handleAccordion('style')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={22}>✏️</Typography>
+              <Box>
+                <Typography fontWeight={700}>Name Text Style</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {fontStyle.fontFamily} · {fontStyle.fontSize}px · {fontStyle.color}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <TextField fullWidth select size="small" label="Font Family" value={fontStyle.fontFamily}
+                  onChange={e => setFontStyle(p => ({ ...p, fontFamily: e.target.value }))}>
+                  {FONT_FAMILIES.map(f => <MenuItem key={f.value} value={f.value}>{f.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+                <TextField fullWidth size="small" type="number" label="Size (px)" value={fontStyle.fontSize}
+                  inputProps={{ min: 10, max: 200 }}
+                  onChange={e => setFontStyle(p => ({ ...p, fontSize: Number(e.target.value) }))} />
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+                <Stack spacing={0.5}>
+                  <Typography variant="caption" color="text.secondary">Color</Typography>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <input type="color" value={fontStyle.color}
+                      onChange={e => setFontStyle(p => ({ ...p, color: e.target.value }))}
+                      style={{ width: 44, height: 36, border: 'none', cursor: 'pointer', borderRadius: 4 }} />
+                    <Typography variant="body2">{fontStyle.color}</Typography>
+                  </Stack>
+                </Stack>
+              </Grid>
+              <Grid size={{ xs: 12, md: 5 }}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Button size="small" sx={{ minWidth: 40 }}
+                    variant={fontStyle.fontWeight === 'bold' ? 'contained' : 'outlined'} color={accentColor}
+                    onClick={() => setFontStyle(p => ({ ...p, fontWeight: p.fontWeight === 'bold' ? 'normal' : 'bold' }))}>
+                    <strong>B</strong>
                   </Button>
-                ))}
-                <Tooltip title="Text shadow — improves readability on busy backgrounds">
-                  <Button size="small"
-                    variant={fontStyle.shadow ? 'contained' : 'outlined'}
-                    color={accentColor}
-                    onClick={() => setFontStyle(p => ({ ...p, shadow: !p.shadow }))}>
-                    Shadow
-                  </Button>
-                </Tooltip>
-                <Tooltip title="Reset text position to default (bottom-centre)">
+                  {['left', 'center', 'right'].map(a => (
+                    <Button key={a} size="small" sx={{ minWidth: 40 }}
+                      variant={fontStyle.textAlign === a ? 'contained' : 'outlined'} color={accentColor}
+                      onClick={() => setFontStyle(p => ({ ...p, textAlign: a }))}>
+                      {a === 'left' ? '⬅' : a === 'center' ? '↔' : '➡'}
+                    </Button>
+                  ))}
+                  <Button size="small" variant={fontStyle.shadow ? 'contained' : 'outlined'} color={accentColor}
+                    onClick={() => setFontStyle(p => ({ ...p, shadow: !p.shadow }))}>Shadow</Button>
                   <Button size="small" variant="outlined"
-                    onClick={() => setFontStyle(p => ({ ...p, x: 0.5, y: 0.88 }))}>
-                    Reset Pos
-                  </Button>
-                </Tooltip>
-              </Stack>
+                    onClick={() => setFontStyle(p => ({ ...p, x: 0.5, y: 0.88 }))}>Reset</Button>
+                </Stack>
+              </Grid>
             </Grid>
-          </Grid>
-        </CardContent></Card>
+          </AccordionDetails>
+        </Accordion>
 
-        {/* ── Recipients ── */}
-        <Card><CardContent>
-          <Typography fontWeight={700} sx={{ mb: 2 }}>Recipients</Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField fullWidth select label="Recipient Source" value={invitationForm.recipientMode}
-                onChange={e => { setInvitationForm(p => ({ ...p, recipientMode: e.target.value })); setPreviewIdx(0); }}>
-                {recipientModeOptions.map(o =>
-                  <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
-              </TextField>
-            </Grid>
+        {/* ══ ACCORDION 3 — Message & RSVP ══ */}
+        <Accordion expanded={expanded === 'message'} onChange={handleAccordion('message')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={22}>💬</Typography>
+              <Box>
+                <Typography fontWeight={700}>Message</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, display: 'block' }}>
+                  {invitationForm.message ? invitationForm.message.slice(0, 50) + '…' : 'Write your message here'}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Stack spacing={2}>
+              <TextField fullWidth multiline minRows={5}
+                label="Message" value={invitationForm.message}
+                onChange={e => setInvitationForm(p => ({ ...p, message: e.target.value }))}
+                helperText="Use {name} — replaced with each recipient's name."
+                placeholder="Dear {name}, you are cordially invited…" />
+              <FormControlLabel
+                control={<Switch checked={!!invitationForm.includeRsvp} color="success"
+                  onChange={e => setInvitationForm(p => ({ ...p, includeRsvp: e.target.checked }))} />}
+                label={<Typography variant="body2" fontWeight={600}>Request RSVP confirmation</Typography>}
+              />
+              {invitationForm.includeRsvp && (
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField fullWidth size="small" label="Yes Label" value={invitationForm.rsvpYesLabel}
+                      onChange={e => setInvitationForm(p => ({ ...p, rsvpYesLabel: e.target.value }))} />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField fullWidth size="small" label="No Label" value={invitationForm.rsvpNoLabel}
+                      onChange={e => setInvitationForm(p => ({ ...p, rsvpNoLabel: e.target.value }))} />
+                  </Grid>
+                </Grid>
+              )}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
 
-            {invitationForm.recipientMode === 'single' && (
-              <>
-                <Grid size={{ xs: 12, md: 3 }}>
-                  <TextField fullWidth label="Name" value={invitationForm.singleName}
+        {/* ══ ACCORDION 4 — Recipients ══ */}
+        <Accordion expanded={expanded === 'recipients'} onChange={handleAccordion('recipients')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={22}>👥</Typography>
+              <Box>
+                <Typography fontWeight={700}>Recipients</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {totalCount > 0 ? `${totalCount} selected` : 'Choose who to send to'}
+                  {overLimit && ` (max ${MAX_RECIPIENTS})`}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField fullWidth select size="small" label="Recipient Source" value={invitationForm.recipientMode}
+                  onChange={e => { setInvitationForm(p => ({ ...p, recipientMode: e.target.value })); setPreviewIdx(0); }}>
+                  {recipientModeOptions.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+
+              {invitationForm.recipientMode === 'single' && (<>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField fullWidth size="small" label="Name" value={invitationForm.singleName}
                     onChange={e => setInvitationForm(p => ({ ...p, singleName: e.target.value }))} />
                 </Grid>
-                <Grid size={{ xs: 12, md: 3 }}>
-                  <TextField fullWidth label="Phone" value={invitationForm.singleNumber}
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField fullWidth size="small" label="Mobile Number" value={invitationForm.singleNumber}
                     onChange={e => setInvitationForm(p => ({ ...p, singleNumber: e.target.value }))}
-                    helperText="With country code e.g. 919876543210" />
+                    onBlur={() => {
+                      const n = invitationForm.singleNumber.replace(/[^\d]/g, '');
+                      if (n.length === 10) setInvitationForm(p => ({ ...p, singleNumber: '91' + n }));
+                    }}
+                    helperText="10-digit auto-prefixed with 91 · or enter full e.g. 919876543210" />
                 </Grid>
-              </>
-            )}
+              </>)}
 
-            {['csv', 'excel'].includes(invitationForm.recipientMode) && (
-              <Grid size={{ xs: 12 }}>
-                <Stack direction="row" alignItems="center" spacing={2}>
-                  <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
-                    Upload {invitationForm.recipientMode.toUpperCase()}
-                    <input hidden type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} />
-                  </Button>
-                  {fileName && (
-                    <Typography variant="body2" color="text.secondary">
-                      📄 {fileName} — <strong>{selectedRecipients.length}</strong> recipients found
-                    </Typography>
-                  )}
-                </Stack>
-              </Grid>
-            )}
-          </Grid>
+              {['csv', 'excel'].includes(invitationForm.recipientMode) && (
+                <Grid size={{ xs: 12 }}>
+                  <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+                    <Button component="label" variant="outlined" size="small" startIcon={<UploadFileIcon />} color={accentColor}>
+                      Upload {invitationForm.recipientMode.toUpperCase()}
+                      <input hidden type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} />
+                    </Button>
+                    {fileName && (
+                      <Typography variant="body2" color="text.secondary">
+                        📄 {fileName} — <strong>{selectedRecipients.length}</strong> found
+                      </Typography>
+                    )}
+                  </Stack>
+                </Grid>
+              )}
+            </Grid>
 
-          {/* Checklist */}
-          {selectedRecipients.length > 0 && invitationForm.recipientMode !== 'single' && (
-            <Box sx={{ mt: 2 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                <Typography fontWeight={700}>
-                  Recipients ({checkedRecipients.length} selected of {selectedRecipients.length})
-                  {overLimit && (
-                    <Chip label={`Max ${MAX_RECIPIENTS} — first ${MAX_RECIPIENTS} will be used`}
-                      color="warning" size="small" sx={{ ml: 1 }} />
-                  )}
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Button size="small" onClick={() =>
-                    setSelectedRecipients(prev => prev.map(r => ({ ...r, checked: true })))}>
-                    All
-                  </Button>
-                  <Button size="small" onClick={() =>
-                    setSelectedRecipients(prev => prev.map(r => ({ ...r, checked: false })))}>
-                    None
-                  </Button>
+            {selectedRecipients.length > 0 && invitationForm.recipientMode !== 'single' && (
+              <Box sx={{ mt: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="body2" fontWeight={700}>
+                    {checkedRecipients.length} / {selectedRecipients.length} selected
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" onClick={() => setSelectedRecipients(prev => prev.map(r => ({ ...r, checked: true })))}>All</Button>
+                    <Button size="small" onClick={() => setSelectedRecipients(prev => prev.map(r => ({ ...r, checked: false })))}>None</Button>
+                  </Stack>
                 </Stack>
-              </Stack>
-              <Box sx={{ maxHeight: 220, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-                <Grid container>
-                  {selectedRecipients.map((r, idx) => (
-                    <Grid key={idx} size={{ xs: 12, md: 6, xl: 4 }}>
-                      <FormControlLabel
-                        label={
-                          <Typography variant="body2">
-                            <strong>{r.name}</strong> — {r.mobile}
-                          </Typography>
-                        }
-                        control={
-                          <Checkbox size="small" checked={r.checked !== false}
+                <Box sx={{ maxHeight: 200, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+                  <Grid container>
+                    {selectedRecipients.map((r, idx) => (
+                      <Grid key={idx} size={{ xs: 12, sm: 6 }}>
+                        <FormControlLabel
+                          label={<Typography variant="body2"><strong>{r.name}</strong> · {r.mobile}</Typography>}
+                          control={<Checkbox size="small" checked={r.checked !== false}
                             onChange={() => setSelectedRecipients(prev =>
-                              prev.map((x, i) => i === idx ? { ...x, checked: x.checked === false } : x)
-                            )} />
-                        }
-                      />
-                    </Grid>
-                  ))}
-                </Grid>
+                              prev.map((x, i) => i === idx ? { ...x, checked: x.checked === false } : x))} />}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
               </Box>
-            </Box>
-          )}
-        </CardContent></Card>
+            )}
+          </AccordionDetails>
+        </Accordion>
 
         {/* ── Queue status (shown after Send is clicked) ── */}
         {queue.length > 0 && (
@@ -2157,6 +2206,7 @@ export default function WhatsAppPage() {
           onUploadImage={handleBaileysUploadImage} uploadingImage={baileysUploadingImage}
           sendServiceFn={whatsappService.baileysSendInvitation}
           fileName={baileysFileName}               setFileName={setBaileysFileName}
+          blasts={blasts}
         />
       )}
       {useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys />}
@@ -2210,6 +2260,7 @@ export default function WhatsAppPage() {
           onUploadImage={handleUploadImage}       uploadingImage={uploadingImage}
           sendServiceFn={whatsappService.sendInvitation}
           fileName={fileName}                     setFileName={setFileName}
+          blasts={blasts}
         />
       )}
       {!useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys={false} />}

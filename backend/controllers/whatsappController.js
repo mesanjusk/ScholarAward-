@@ -7,7 +7,7 @@ const User = require('../models/User');
 const { emitEvent } = require('../services/socket');
 const WhatsAppBlast = require('../models/WhatsAppBlast');
 const { sendTemplateMessage, sendTextMessage, uploadWhatsAppMedia, sendImageMessage } = require('../services/whatsappService');
-function normalizePhone(value) { return String(value || '').replace(/[^\d]/g, '').trim(); }
+function normalizePhone(value) { const d = String(value || '').replace(/[^\d]/g, '').trim(); return d.length === 10 ? '91' + d : d; }
 function uniqueRecipients(items = []) { const seen = new Set(); return items.filter((item) => { const mobile = normalizePhone(item.mobile); if (!mobile || seen.has(mobile)) return false; seen.add(mobile); item.mobile = mobile; return true; }); }
 function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
 function getConversationKey(primary, fallback = '') { return normalizePhone(primary || fallback); }
