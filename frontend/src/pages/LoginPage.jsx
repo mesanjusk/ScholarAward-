@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Alert, Box, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useAuth } from '../context/AuthContext';
+import { isInvitationOnly } from '../utils/accessControl';
 import PwaInstallPrompt from '../components/pwa/PwaInstallPrompt';
 
 export default function LoginPage() {
@@ -17,8 +18,8 @@ export default function LoginPage() {
     setSubmitting(true);
     setError('');
     try {
-      await login(form.username, form.password);
-      navigate('/');
+      const loggedInUser = await login(form.username, form.password);
+      navigate(isInvitationOnly(loggedInUser) ? '/whatsapp' : '/');
     } catch (err) {
       setError(err?.response?.data?.message || 'Login failed');
     } finally {

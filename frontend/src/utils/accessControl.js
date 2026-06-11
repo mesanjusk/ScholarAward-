@@ -50,3 +50,7 @@ export function isSuperAdmin(user) {
   const permissions = getPermissions(user);
   return permissions.includes('*');
 }
+
+export function isInvitationOnly(user) {
+  return user?.eventDutyType === 'INVITATION_ONLY';
+}

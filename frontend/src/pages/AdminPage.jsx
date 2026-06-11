@@ -34,7 +34,7 @@ import { APP_ROUTES } from '../utils/accessControl';
 
 const permissionsList = APP_ROUTES.map((item) => ({ label: item.label, value: item.permission }));
 
-const DUTY_OPTIONS = ['NONE','HOST','SUPER_ADMIN','ADMIN','SENIOR_TEAM','TEAM_LEADER','VOLUNTEER','ANCHOR','GUEST','STUDENT','CERTIFICATE_TEAM'];
+const DUTY_OPTIONS = ['NONE','HOST','SUPER_ADMIN','ADMIN','SENIOR_TEAM','TEAM_LEADER','VOLUNTEER','ANCHOR','GUEST','STUDENT','CERTIFICATE_TEAM','INVITATION_ONLY'];
 
 function userTemplate(dutyType = 'ADMIN', roleId = '') {
   return {

@@ -1,7 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
-import { canAccess } from '../utils/accessControl';
+import { canAccess, isInvitationOnly } from '../utils/accessControl';
 
 export default function ProtectedRoute({ children, permission }) {
   const { user, loading } = useAuth();
@@ -15,6 +15,11 @@ export default function ProtectedRoute({ children, permission }) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  // Invitation-only users can only access /whatsapp
+  if (isInvitationOnly(user) && permission !== 'whatsapp:send') {
+    return <Navigate to="/whatsapp" replace />;
+  }
 
   if (!canAccess(user, permission)) {
     return (

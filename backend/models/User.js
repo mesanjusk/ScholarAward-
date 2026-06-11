@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema({
   roleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true },
   eventDutyType: {
     type: String,
-    enum: ['NONE','HOST','SUPER_ADMIN','ADMIN','SENIOR_TEAM','TEAM_LEADER','VOLUNTEER','ANCHOR','GUEST','STUDENT','CERTIFICATE_TEAM'],
+    enum: ['NONE','HOST','SUPER_ADMIN','ADMIN','SENIOR_TEAM','TEAM_LEADER','VOLUNTEER','ANCHOR','GUEST','STUDENT','CERTIFICATE_TEAM','INVITATION_ONLY'],
     default: 'NONE'
   },
   categoriesAssigned: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Category' }],

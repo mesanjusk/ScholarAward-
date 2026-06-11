@@ -26,6 +26,8 @@ import PageSurface   from '../components/PageSurface';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable  from '../components/ResponsiveTable';
 import whatsappService  from '../services/whatsappService';
+import { useAuth }      from '../context/AuthContext';
+import { isInvitationOnly } from '../utils/accessControl';
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
@@ -1815,12 +1817,14 @@ function RuleDialog({ open, onClose, editing, form, setForm, onSave, saving, isB
 // ══════════════════════════════════════════════════════════════════════════════
 
 export default function WhatsAppPage() {
+  const { user } = useAuth();
+  const invitationOnly = isInvitationOnly(user);
 
   const [useBaileys, setUseBaileys] = useState(
     () => localStorage.getItem('wa_provider') !== 'official'
   );
 
-  const [tab,        setTab]        = useState('inbox');
+  const [tab,        setTab]        = useState(invitationOnly ? 'invite' : 'inbox');
   const [loading,    setLoading]    = useState(false);
   const [saving,     setSaving]     = useState(false);
   const [resultMessage, setResultMessage] = useState(null);
@@ -2153,22 +2157,26 @@ export default function WhatsAppPage() {
         ]}
       />
 
-      <ProviderToggle useBaileys={useBaileys} onToggle={handleToggle} baileysStatus={baileysStatus?.status} />
+      {!invitationOnly && (
+        <ProviderToggle useBaileys={useBaileys} onToggle={handleToggle} baileysStatus={baileysStatus?.status} />
+      )}
 
-      <PageSurface sx={{ mb: 2 }}>
-        <Tabs
-          value={tab} onChange={(_, v) => {
-            setTab(v);
-            if (v === 'blasts') whatsappService.listBlasts().then(r => setBlasts(Array.isArray(r.data) ? r.data : [])).catch(() => null);
-          }}
-          variant="scrollable" allowScrollButtonsMobile
-          sx={{ minHeight: 0, '& .MuiTab-root': { minHeight: 42 } }}
-          textColor={useBaileys ? 'warning' : 'primary'}
-          indicatorColor={useBaileys ? 'warning' : 'primary'}
-        >
-          {currentTabs.map(([value, label]) => <Tab key={value} value={value} label={label} />)}
-        </Tabs>
-      </PageSurface>
+      {!invitationOnly && (
+        <PageSurface sx={{ mb: 2 }}>
+          <Tabs
+            value={tab} onChange={(_, v) => {
+              setTab(v);
+              if (v === 'blasts') whatsappService.listBlasts().then(r => setBlasts(Array.isArray(r.data) ? r.data : [])).catch(() => null);
+            }}
+            variant="scrollable" allowScrollButtonsMobile
+            sx={{ minHeight: 0, '& .MuiTab-root': { minHeight: 42 } }}
+            textColor={useBaileys ? 'warning' : 'primary'}
+            indicatorColor={useBaileys ? 'warning' : 'primary'}
+          >
+            {currentTabs.map(([value, label]) => <Tab key={value} value={value} label={label} />)}
+          </Tabs>
+        </PageSurface>
+      )}
 
       {loading       && <LinearProgress sx={{ mb: 2 }} />}
       {resultMessage && (
