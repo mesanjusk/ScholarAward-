@@ -25,6 +25,7 @@ import HistoryIcon          from '@mui/icons-material/History';
 import EditIcon             from '@mui/icons-material/Edit';
 import DeleteIcon           from '@mui/icons-material/Delete';
 import Fab                  from '@mui/material/Fab';
+import Portal               from '@mui/material/Portal';
 import Dialog               from '@mui/material/Dialog';
 import DialogTitle          from '@mui/material/DialogTitle';
 import DialogContent        from '@mui/material/DialogContent';
@@ -845,7 +846,6 @@ function InvitationPanel({
       };
 
       const localResults = []; // track results locally — avoids stale React state
-      localResultsRef.current = localResults;
 
       while (i < recipients.length) {
         if (checkCancel()) return;
@@ -2173,12 +2173,14 @@ function ManualCampaignsPanel() {
           </CardContent></Card>
         </Stack>
 
-        {/* FAB — Add recipient (WhatsApp style) */}
-        <Fab color="success" size="medium"
-          sx={{ position: 'fixed', bottom: { xs: 80, sm: 32 }, right: { xs: 16, sm: 32 }, zIndex: 1200 }}
-          onClick={() => { setNewName(''); setNewMobile(''); setAddOpen(true); }}>
-          <AddIcon />
-        </Fab>
+        {/* FAB — Add recipient (WhatsApp style) — rendered in Portal so it escapes any overflow/transform parent */}
+        <Portal>
+          <Fab color="success" size="medium"
+            sx={{ position: 'fixed', bottom: { xs: 80, sm: 32 }, right: { xs: 16, sm: 32 }, zIndex: 1300 }}
+            onClick={() => { setNewName(''); setNewMobile(''); setAddOpen(true); }}>
+            <AddIcon />
+          </Fab>
+        </Portal>
 
         {/* Add Recipient Dialog */}
         <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>

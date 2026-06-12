@@ -12,6 +12,7 @@ export const MODULE_PERMISSIONS = {
   whatsapp:           'whatsapp:send',
   superAdminSettings: 'super_admin:settings',
   templateConfig:     'super_admin:settings',
+  agenda:             'stage:manage',
 };
 
 export const APP_ROUTES = [
@@ -25,6 +26,7 @@ export const APP_ROUTES = [
   { label: 'Tasks',           to: '/responsibilities',     permission: MODULE_PERMISSIONS.responsibilities },
   { label: 'Notifications',   to: '/notifications',        permission: MODULE_PERMISSIONS.notifications },
   { label: 'WhatsApp',        to: '/whatsapp',             permission: MODULE_PERMISSIONS.whatsapp },
+  { label: 'Agenda',          to: '/agenda',               permission: MODULE_PERMISSIONS.agenda },
   { label: 'Admin',           to: '/admin',                permission: MODULE_PERMISSIONS.admin },
   { label: 'System Settings', to: '/super-admin/settings', permission: MODULE_PERMISSIONS.superAdminSettings },
   { label: 'Photo Template',  to: '/template-config',      permission: MODULE_PERMISSIONS.templateConfig },
