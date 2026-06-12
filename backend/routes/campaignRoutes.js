@@ -9,8 +9,6 @@ function normalizePhone(v) {
   return d.length === 10 ? '91' + d : d;
 }
 
-// ── CRUD ──────────────────────────────────────────────────────────────────────
-
 router.get('/', protect, async (req, res) => {
   try {
     const campaigns = await Campaign.find().sort({ createdAt: -1 }).lean();
@@ -48,29 +46,22 @@ router.delete('/:id', protect, async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// ── Trigger: manually fire an AUTO campaign now ───────────────────────────────
 router.post('/:id/send', protect, async (req, res) => {
   try {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
     if (campaign.status === 'SENDING') return res.status(409).json({ message: 'Already sending' });
-
     await Campaign.findByIdAndUpdate(campaign._id, { status: 'SENDING' });
     res.json({ message: 'Campaign send started', id: campaign._id });
-
-    // Fire and forget
     runCampaign(campaign).catch(console.error);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// ── Internal runner (Baileys) ─────────────────────────────────────────────────
 async function runCampaign(campaign) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  const rand  = () => (Math.floor(Math.random() * 9) + 12) * 1000; // 12–20s
-
+  const rand  = () => (Math.floor(Math.random() * 9) + 12) * 1000;
   let sent = 0, failed = 0;
   const updatedRecipients = campaign.recipients.map(r => ({ ...r.toObject(), status: 'PENDING' }));
-
   for (let i = 0; i < updatedRecipients.length; i++) {
     const r = updatedRecipients[i];
     const phone = normalizePhone(r.mobile);
@@ -99,30 +90,23 @@ async function runCampaign(campaign) {
     }
     if (i < updatedRecipients.length - 1) await sleep(rand());
   }
-
   await Campaign.findByIdAndUpdate(campaign._id, {
-    status: 'SENT',
-    sentCount: sent,
-    failedCount: failed,
-    recipients: updatedRecipients,
+    status: 'SENT', sentCount: sent, failedCount: failed, recipients: updatedRecipients,
   });
 }
 
-// ── Background scheduler — checks every minute for due campaigns ──────────────
 function startScheduler() {
   setInterval(async () => {
     try {
       const due = await Campaign.find({
-        status: 'SCHEDULED',
-        type: 'AUTO',
-        scheduledAt: { $lte: new Date() },
+        status: 'SCHEDULED', type: 'AUTO', scheduledAt: { $lte: new Date() },
       });
       for (const c of due) {
         await Campaign.findByIdAndUpdate(c._id, { status: 'SENDING' });
         runCampaign(c).catch(console.error);
       }
     } catch (_) {}
-  }, 60 * 1000); // every 60s
+  }, 60 * 1000);
 }
 
 startScheduler();

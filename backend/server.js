@@ -10,8 +10,6 @@ const seedAdmin = require("./seedAdmin");
 
 dotenv.config();
 
-// Prevent Baileys internal errors (e.g. sendRetryRequest on a closed socket)
-// from crashing the whole Node process.
 process.on('unhandledRejection', (reason) => {
   const msg = reason?.message || String(reason);
   if (msg.includes('Connection Closed') || msg.includes('Timed Out') || msg.includes('baileys')) {
@@ -109,15 +107,10 @@ async function startServer() {
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {
       console.log(`Server running on ${PORT}`);
-
-      // ── Baileys auto-connect ──────────────────────────────────────────────
-      // If saved WhatsApp credentials exist in MongoDB, reconnect automatically
-      // on every server boot — no manual QR scan needed after a restart.
       const { autoConnectIfCredentialsExist } = require('./services/baileysService');
       autoConnectIfCredentialsExist().catch((err) =>
         console.error('[baileys] Auto-connect failed on boot:', err.message)
       );
-      // ─────────────────────────────────────────────────────────────────────
     });
 
   } catch (err) {

@@ -18,7 +18,6 @@ const schema = new mongoose.Schema({
   rsvpNoLabel:  { type: String, default: "Sorry, can't make it ❌" },
   recipients:   [recipientSchema],
   scheduledAt:  { type: Date, default: null },
-  // AUTO = send via API automatically; MANUAL = wa.me links, remind user
   type:         { type: String, enum: ['AUTO', 'MANUAL'], default: 'MANUAL' },
   status:       { type: String, enum: ['DRAFT','SCHEDULED','SENDING','SENT','CANCELLED'], default: 'DRAFT' },
   sentCount:    { type: Number, default: 0 },
