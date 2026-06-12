@@ -220,31 +220,55 @@ function StudentCard({ student, catId, onSave, onDelete }) {
 // ── Category section ──────────────────────────────────────────────────────────
 function CategorySection({ cat, onCategoryUpdate, onCategoryDelete }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [addName, setAddName] = useState('');
+  const [dbStudents, setDbStudents] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [addPct, setAddPct] = useState('');
   const [addExtra, setAddExtra] = useState('');
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [editTitleOpen, setEditTitleOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(cat.title);
 
+  async function openAddStudent() {
+    setAddOpen(true);
+    setStudentSearch('');
+    setSelectedStudent(null);
+    setAddPct('');
+    setAddExtra('');
+    if (dbStudents.length === 0) {
+      setLoadingStudents(true);
+      try {
+        const res = await fetch(`${API}/api/students?limit=500`, { headers: authHeader() });
+        const data = await res.json();
+        setDbStudents(Array.isArray(data) ? data : data.students || data.data || []);
+      } catch { /* ignore */ }
+      finally { setLoadingStudents(false); }
+    }
+  }
+
+  function pickStudent(s) {
+    setSelectedStudent(s);
+    setStudentSearch(s.fullName || s.firstName + ' ' + s.lastName);
+    setAddPct(s.percentage ? `${s.percentage}%` : '');
+  }
+
   function saveStudent() {
-    if (!addName.trim()) return;
+    const name = selectedStudent
+      ? (selectedStudent.fullName || `${selectedStudent.firstName} ${selectedStudent.lastName}`).trim()
+      : studentSearch.trim();
+    if (!name) return;
     const students = [
       ...(cat.students || []),
       {
-        name: addName.trim(),
+        name,
         percentage: addPct.trim(),
         extra: addExtra.trim(),
-        presenters: [
-          { name: 'सं. सुनीता बहन जी', order: 1 },
-          { name: 'सं. शांति बहन जी', order: 2 },
-          { name: 'सं. रेखा बहन जी', order: 3 },
-        ],
+        presenters: [],
         order: (cat.students?.length || 0) + 1,
       },
     ];
     onCategoryUpdate({ ...cat, students });
     setAddOpen(false);
-    setAddName(''); setAddPct(''); setAddExtra('');
   }
 
   function saveStudentPresenter(updated) {
@@ -265,6 +289,11 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete }) {
     onCategoryUpdate({ ...cat, title: editTitle });
     setEditTitleOpen(false);
   }
+
+  const filteredStudents = dbStudents.filter(s => {
+    const name = (s.fullName || `${s.firstName} ${s.lastName}`).toLowerCase();
+    return name.includes(studentSearch.toLowerCase());
+  });
 
   return (
     <Card variant="outlined" sx={{ mb: 2, borderLeft: '4px solid', borderColor: 'primary.main' }}>
@@ -290,24 +319,54 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete }) {
               onSave={saveStudentPresenter} onDelete={deleteStudent} />
           ))}
 
-        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
+        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={openAddStudent}>
           Add Student
         </Button>
       </CardContent>
 
-      {/* Add Student Dialog */}
+      {/* Add Student Dialog — picks from DB */}
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Add Student to {cat.title}</DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField autoFocus label="Student Name" fullWidth value={addName} onChange={e => setAddName(e.target.value)} />
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <TextField
+              autoFocus
+              label="Search student from DB"
+              fullWidth
+              value={studentSearch}
+              onChange={e => { setStudentSearch(e.target.value); setSelectedStudent(null); }}
+              InputProps={{ endAdornment: loadingStudents ? <CircularProgress size={16} /> : null }}
+            />
+            {studentSearch.length > 0 && !selectedStudent && (
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 180, overflowY: 'auto' }}>
+                {filteredStudents.length === 0 && (
+                  <Typography variant="caption" sx={{ p: 1, display: 'block', color: 'text.secondary' }}>
+                    No match — name will be added as typed
+                  </Typography>
+                )}
+                {filteredStudents.slice(0, 20).map(s => (
+                  <Box key={s._id}
+                    onClick={() => pickStudent(s)}
+                    sx={{ px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+                    <Typography variant="body2">{s.fullName || `${s.firstName} ${s.lastName}`}</Typography>
+                    {s.percentage ? <Typography variant="caption" color="text.secondary">{s.percentage}%</Typography> : null}
+                  </Box>
+                ))}
+              </Box>
+            )}
+            {selectedStudent && (
+              <Alert severity="success" sx={{ py: 0 }}>
+                Selected: <strong>{selectedStudent.fullName || `${selectedStudent.firstName} ${selectedStudent.lastName}`}</strong>
+              </Alert>
+            )}
             <TextField label="Percentage / Score (optional)" fullWidth value={addPct} onChange={e => setAddPct(e.target.value)} />
             <TextField label="Extra info (e.g. JEE percentile)" fullWidth value={addExtra} onChange={e => setAddExtra(e.target.value)} />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={saveStudent} disabled={!addName.trim()}>Add</Button>
+          <Button variant="contained" onClick={saveStudent}
+            disabled={!studentSearch.trim()}>Add</Button>
         </DialogActions>
       </Dialog>
 
@@ -525,6 +584,8 @@ function AgendaPage() {
   const [seeding, setSeeding] = useState(false);
   const [addCatOpen, setAddCatOpen] = useState(false);
   const [newCatTitle, setNewCatTitle] = useState('');
+  const [dbCategories, setDbCategories] = useState([]);
+  const [loadingDbCats, setLoadingDbCats] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
   async function safeJson(res) {
@@ -640,7 +701,19 @@ function AgendaPage() {
               {seeding ? 'Seeding…' : '🌱 Load Default Data (PDF)'}
             </Button>
           )}
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddCatOpen(true)}>
+          <Button variant="outlined" startIcon={<AddIcon />} onClick={async () => {
+            setAddCatOpen(true);
+            setNewCatTitle('');
+            if (dbCategories.length === 0) {
+              setLoadingDbCats(true);
+              try {
+                const res = await fetch(`${API}/api/categories`, { headers: authHeader() });
+                const data = await res.json();
+                setDbCategories(Array.isArray(data) ? data : data.categories || []);
+              } catch { /* ignore */ }
+              finally { setLoadingDbCats(false); }
+            }
+          }}>
             Add Category
           </Button>
           <Button variant="contained" color="success" startIcon={<DownloadIcon />}
@@ -671,14 +744,32 @@ function AgendaPage() {
             />
           ))}
 
-        {/* Add Category Dialog */}
+        {/* Add Category Dialog — picks from DB */}
         <Dialog open={addCatOpen} onClose={() => setAddCatOpen(false)} maxWidth="xs" fullWidth>
           <DialogTitle>Add Category</DialogTitle>
           <DialogContent>
-            <TextField autoFocus fullWidth label="Category title"
-              value={newCatTitle} onChange={e => setNewCatTitle(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addCategory()}
-              sx={{ mt: 1 }} />
+            <Stack spacing={1.5} sx={{ mt: 1 }}>
+              <TextField autoFocus fullWidth label="Search or type category name"
+                value={newCatTitle} onChange={e => setNewCatTitle(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addCategory()}
+                InputProps={{ endAdornment: loadingDbCats ? <CircularProgress size={16} /> : null }}
+              />
+              {dbCategories.filter(c =>
+                !newCatTitle || c.name?.toLowerCase().includes(newCatTitle.toLowerCase())
+              ).length > 0 && (
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 200, overflowY: 'auto' }}>
+                  {dbCategories
+                    .filter(c => !newCatTitle || c.name?.toLowerCase().includes(newCatTitle.toLowerCase()))
+                    .slice(0, 20)
+                    .map(c => (
+                      <Box key={c._id} onClick={() => setNewCatTitle(c.name)}
+                        sx={{ px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+                        <Typography variant="body2">{c.name}</Typography>
+                      </Box>
+                    ))}
+                </Box>
+              )}
+            </Stack>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setAddCatOpen(false)}>Cancel</Button>
