@@ -1832,19 +1832,26 @@ function ManualInvitePanel() {
                               Image
                             </Button>
                           )}
-                          {/* Share: auto-download image + open WhatsApp with number+message */}
+                          {/* Share: Web Share API (PWA/mobile) or download+wa.me fallback */}
                           {r.imgBlobUrl && (
                             <Button size="small" variant="contained" color="secondary"
                               onClick={async () => {
-                                // Step 1: download personalised image to device
-                                downloadImage(r.imgBlobUrl, r.name);
-                                // Step 2: open WhatsApp with this number + pre-filled message
-                                setTimeout(() => {
-                                  window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(r.personalMsg)}`, '_blank');
-                                }, 600);
                                 setSentSet(prev => new Set([...prev, idx]));
+                                try {
+                                  const resp = await fetch(r.imgBlobUrl);
+                                  const blob = await resp.blob();
+                                  const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
+                                  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                                    // PWA/mobile: native share sheet → pick WhatsApp → image+message together
+                                    await navigator.share({ files: [file], text: r.personalMsg });
+                                    return;
+                                  }
+                                } catch (_) {}
+                                // Desktop fallback: download image + open wa.me
+                                downloadImage(r.imgBlobUrl, r.name);
+                                window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(r.personalMsg)}`, '_blank');
                               }}>
-                              📤 Share + Open WA
+                              📤 Share
                             </Button>
                           )}
                           {/* Send WhatsApp wa.me */}
@@ -1949,14 +1956,20 @@ function ManualCampaignsPanel() {
   const shareImg = async (campaign, r) => {
     const url = await getImg(campaign, r.name);
     if (!url) return;
-    // Download personalised image to device
+    const personalMsg = (campaign.message || '').replace(/\{name\}/gi, r.name);
+    try {
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text: personalMsg });
+        return;
+      }
+    } catch (_) {}
+    // Desktop fallback
     const a = document.createElement('a');
     a.href = url; a.download = `invite_${r.name.replace(/\s+/g,'_')}.png`; a.click();
-    // Open WhatsApp with this number + pre-filled message
-    const personalMsg = (campaign.message || '').replace(/\{name\}/gi, r.name);
-    setTimeout(() => {
-      window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}`, '_blank');
-    }, 600);
+    window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}`, '_blank');
   };
 
   // ── Detail view ──────────────────────────────────────────────────────────────
