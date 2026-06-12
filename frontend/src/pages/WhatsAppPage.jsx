@@ -2821,7 +2821,7 @@ export default function WhatsAppPage() {
     () => localStorage.getItem('wa_provider') !== 'official'
   );
 
-  const [tab,        setTab]        = useState(invitationOnly ? 'invite' : 'inbox');
+  const [tab,        setTab]        = useState(invitationOnly ? 'manual-saved' : 'inbox');
   const [loading,    setLoading]    = useState(false);
   const [saving,     setSaving]     = useState(false);
   const [resultMessage, setResultMessage] = useState(null);
