@@ -32,14 +32,15 @@ import { isInvitationOnly } from '../utils/accessControl';
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
 const officialTabs = [
-  ['inbox',       'Inbox'],
-  ['rules',       'Auto Reply'],
-  ['send',        'Quick Send'],
-  ['invite',      'Invitation'],
-  ['blasts',      'Blast History'],
-  ['templates',   'Templates'],
-  ['connections', 'Connections'],
-  ['logs',        'Logs'],
+  ['inbox',    'Inbox'],
+  ['rules',    'Auto Reply'],
+  ['send',     'Quick Send'],
+  ['invite',   'Invitation'],
+  ['manual',   '📱 Manual'],
+  ['blasts',   'Blast History'],
+  ['templates','Templates'],
+  ['connections','Connections'],
+  ['logs',     'Logs'],
 ];
 
 const baileysTabs = [
@@ -47,6 +48,7 @@ const baileysTabs = [
   ['rules',  'Auto Reply'],
   ['send',   'Quick Send'],
   ['invite', 'Invitation'],
+  ['manual', '📱 Manual'],
   ['blasts', 'Blast History'],
   ['logs',   'Logs'],
   ['setup',  'Setup / QR'],
@@ -1355,6 +1357,329 @@ function InvitationPanel({
   );
 }
 
+// ── Manual Invite Panel (wa.me links — works even when API is banned) ─────────
+
+function ManualInvitePanel() {
+  const canvasRef    = useRef(null);
+  const imageElRef   = useRef(null);
+  const isDragging   = useRef(false);
+
+  const [fileName,      setFileName]      = useState('');
+  const [recipients,    setRecipients]    = useState([]);
+  const [imageUrl,      setImageUrl]      = useState('');
+  const [message,       setMessage]       = useState('');
+  const [fontStyle,     setFontStyle]     = useState(emptyFontStyle);
+  const [imageLoaded,   setImageLoaded]   = useState(false);
+  const [canvasHeight,  setCanvasHeight]  = useState(400);
+  const [links,         setLinks]         = useState([]);   // generated wa.me entries
+  const [generating,    setGenerating]    = useState(false);
+  const [uploadingImg,  setUploadingImg]  = useState(false);
+  const [expanded,      setExpanded]      = useState('excel');
+  const [previewIdx,    setPreviewIdx]    = useState(0);
+
+  const handleAccordion = (panel) => (_, isOpen) => setExpanded(isOpen ? panel : false);
+
+  // ── Load image ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!imageUrl) { setImageLoaded(false); imageElRef.current = null; return; }
+    setImageLoaded(false);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      imageElRef.current = img;
+      const h = img.naturalHeight && img.naturalWidth
+        ? Math.round(600 * img.naturalHeight / img.naturalWidth) : 400;
+      setCanvasHeight(Math.max(200, Math.min(h, 900)));
+      setImageLoaded(true);
+    };
+    img.onerror = () => { imageElRef.current = null; setImageLoaded(false); };
+    img.src = imageUrl;
+  }, [imageUrl]);
+
+  // ── Redraw canvas ───────────────────────────────────────────────────────────
+  const redraw = useCallback(() => {
+    if (!imageLoaded || !canvasRef.current || !imageElRef.current) return;
+    const name = recipients[previewIdx]?.name || 'Guest';
+    drawNameOnCanvas(canvasRef.current, imageElRef.current, name, fontStyle);
+  }, [imageLoaded, previewIdx, fontStyle, recipients]);
+  useEffect(() => { redraw(); }, [redraw]);
+
+  // ── Drag to position ────────────────────────────────────────────────────────
+  const getFrac = (e) => {
+    const c = canvasRef.current; if (!c) return null;
+    const r = c.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: Math.min(1, Math.max(0, (cx - r.left) / r.width)), y: Math.min(1, Math.max(0, (cy - r.top) / r.height)) };
+  };
+  const onDragStart = (e) => { e.preventDefault(); isDragging.current = true; const p = getFrac(e); if (p) setFontStyle(f => ({ ...f, ...p })); };
+  const onDragMove  = (e) => { if (!isDragging.current) return; e.preventDefault(); const p = getFrac(e); if (p) setFontStyle(f => ({ ...f, ...p })); };
+  const onDragEnd   = () => { isDragging.current = false; };
+
+  // ── Upload image ────────────────────────────────────────────────────────────
+  const onUploadImage = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingImg(true);
+    try {
+      const { default: api } = await import('../api');
+      const fd = new FormData(); fd.append('file', file); fd.append('folder', 'bk_award_invites');
+      const res = await api.post('/uploads/public', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setImageUrl(res?.data?.url || '');
+    } finally { setUploadingImg(false); }
+  };
+
+  // ── Parse Excel ─────────────────────────────────────────────────────────────
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setFileName(file.name);
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf, { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    setRecipients(parseRowsToRecipients(rows));
+    setLinks([]);
+    setPreviewIdx(0);
+    setExpanded('image');
+  };
+
+  // ── Build personalised image blob URL for one recipient ─────────────────────
+  const buildBlobUrl = (name) => new Promise((resolve) => {
+    if (!imageElRef.current) { resolve(null); return; }
+    const off = document.createElement('canvas');
+    off.width  = 1200;
+    off.height = Math.round(1200 * (imageElRef.current.naturalHeight / imageElRef.current.naturalWidth)) || 800;
+    drawNameOnCanvas(off, imageElRef.current, name, fontStyle);
+    off.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : null), 'image/png');
+  });
+
+  // ── Generate wa.me links for all recipients ──────────────────────────────────
+  const generateLinks = async () => {
+    if (!recipients.length) return;
+    setGenerating(true);
+    const result = [];
+    for (const r of recipients) {
+      const personalMsg = (message || '').replace(/\{name\}/gi, r.name);
+      const waUrl = `https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}`;
+      const imgBlobUrl = imageLoaded ? await buildBlobUrl(r.name) : null;
+      result.push({ ...r, waUrl, imgBlobUrl, personalMsg });
+    }
+    setLinks(result);
+    setGenerating(false);
+    setExpanded('links');
+  };
+
+  const downloadImage = (blobUrl, name) => {
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = `invite_${name.replace(/\s+/g, '_')}.png`; a.click();
+  };
+
+  return (
+    <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
+      <Stack spacing={1.5}>
+
+        {/* Header */}
+        <Card sx={{ borderRadius: 3 }}><CardContent sx={{ py: '10px !important', px: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Typography fontSize={22}>📱</Typography>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>Manual Invitation — wa.me Links</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Works even when API is banned · Upload Excel → generate links → tap to send from your phone
+              </Typography>
+            </Box>
+          </Stack>
+        </CardContent></Card>
+
+        {/* Step 1 — Excel Upload */}
+        <Accordion expanded={expanded === 'excel'} onChange={handleAccordion('excel')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={20}>1️⃣</Typography>
+              <Box>
+                <Typography fontWeight={700}>Upload Recipients Excel</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {recipients.length > 0 ? `✓ ${recipients.length} recipients loaded` : 'Columns: name, mobile (or phone/number/whatsapp)'}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Stack spacing={2}>
+              <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} sx={{ alignSelf: 'flex-start' }}>
+                Choose Excel / CSV
+                <input hidden type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} />
+              </Button>
+              {fileName && (
+                <Typography variant="body2" color="text.secondary">📄 {fileName} — <strong>{recipients.length}</strong> recipients found</Typography>
+              )}
+              {recipients.length > 0 && (
+                <Box sx={{ maxHeight: 180, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                  {recipients.map((r, i) => (
+                    <Stack key={i} direction="row" spacing={2} sx={{ px: 1.5, py: 0.75, borderBottom: i < recipients.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                      <Typography variant="body2" sx={{ minWidth: 24, color: 'text.secondary' }}>{i + 1}</Typography>
+                      <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>{r.name}</Typography>
+                      <Typography variant="body2" color="text.secondary">{r.mobile}</Typography>
+                    </Stack>
+                  ))}
+                </Box>
+              )}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Step 2 — Image */}
+        <Accordion expanded={expanded === 'image'} onChange={handleAccordion('image')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={20}>2️⃣</Typography>
+              <Box>
+                <Typography fontWeight={700}>Invitation Image</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {imageUrl ? '✓ Image set · drag to position name' : 'Optional — paste URL or upload'}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <TextField fullWidth size="small" label="Image URL" value={imageUrl}
+                  onChange={e => setImageUrl(e.target.value)} />
+                <Button component="label" variant="outlined" sx={{ whiteSpace: 'nowrap', minWidth: 100 }}
+                  startIcon={uploadingImg ? <CircularProgress size={16} /> : <UploadFileIcon />} disabled={uploadingImg}>
+                  {uploadingImg ? 'Uploading…' : 'Upload'}
+                  <input hidden accept="image/*" type="file" onChange={onUploadImage} />
+                </Button>
+              </Stack>
+
+              {imageUrl && (
+                <>
+                  <Typography variant="caption" color="text.secondary">✋ Drag to position name text on image</Typography>
+                  <Box sx={{ border: '2px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: '#111', cursor: 'crosshair', userSelect: 'none', touchAction: 'none' }}
+                    onMouseDown={onDragStart} onMouseMove={onDragMove} onMouseUp={onDragEnd} onMouseLeave={onDragEnd}
+                    onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd}>
+                    <canvas ref={canvasRef} width={600} height={canvasHeight} style={{ display: 'block', width: '100%', height: 'auto' }} />
+                  </Box>
+                  {recipients.length > 1 && (
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Button size="small" variant="outlined" startIcon={<NavigateBeforeIcon />}
+                        disabled={previewIdx === 0} onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}>Prev</Button>
+                      <Typography variant="body2" color="text.secondary" sx={{ flex: 1, textAlign: 'center' }}>
+                        {previewIdx + 1} / {recipients.length} · <strong>{recipients[previewIdx]?.name}</strong>
+                      </Typography>
+                      <Button size="small" variant="outlined" endIcon={<NavigateNextIcon />}
+                        disabled={previewIdx >= recipients.length - 1} onClick={() => setPreviewIdx(i => Math.min(recipients.length - 1, i + 1))}>Next</Button>
+                    </Stack>
+                  )}
+                  {/* Font style controls */}
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <TextField select size="small" label="Font" value={fontStyle.fontFamily} sx={{ minWidth: 130 }}
+                      onChange={e => setFontStyle(f => ({ ...f, fontFamily: e.target.value }))}>
+                      {FONT_FAMILIES.map(ff => <MenuItem key={ff.value} value={ff.value}>{ff.label}</MenuItem>)}
+                    </TextField>
+                    <TextField size="small" type="number" label="Size" value={fontStyle.fontSize} sx={{ width: 80 }}
+                      inputProps={{ min: 10, max: 200 }}
+                      onChange={e => setFontStyle(f => ({ ...f, fontSize: Number(e.target.value) }))} />
+                    <Stack spacing={0.25} justifyContent="center">
+                      <Typography variant="caption" color="text.secondary">Color</Typography>
+                      <input type="color" value={fontStyle.color}
+                        onChange={e => setFontStyle(f => ({ ...f, color: e.target.value }))}
+                        style={{ width: 44, height: 36, border: 'none', cursor: 'pointer', borderRadius: 4 }} />
+                    </Stack>
+                    <Button size="small" variant={fontStyle.fontWeight === 'bold' ? 'contained' : 'outlined'}
+                      onClick={() => setFontStyle(f => ({ ...f, fontWeight: f.fontWeight === 'bold' ? 'normal' : 'bold' }))}><strong>B</strong></Button>
+                    <Button size="small" variant={fontStyle.shadow ? 'contained' : 'outlined'}
+                      onClick={() => setFontStyle(f => ({ ...f, shadow: !f.shadow }))}>Shadow</Button>
+                  </Stack>
+                </>
+              )}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Step 3 — Message */}
+        <Accordion expanded={expanded === 'message'} onChange={handleAccordion('message')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={20}>3️⃣</Typography>
+              <Box>
+                <Typography fontWeight={700}>WhatsApp Message</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {message ? message.slice(0, 50) + '…' : 'Write your message — {name} replaced per recipient'}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <TextField fullWidth multiline minRows={5} label="Message"
+              value={message} onChange={e => setMessage(e.target.value)}
+              placeholder="Dear {name}, you are cordially invited to our event…"
+              helperText="{name} is automatically replaced with each recipient's name." />
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Generate button */}
+        {recipients.length > 0 && (
+          <Button variant="contained" size="large" color="success"
+            startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
+            disabled={generating || (!message.trim() && !imageUrl)}
+            onClick={generateLinks} sx={{ borderRadius: 3 }}>
+            {generating ? `Generating… (${links.length}/${recipients.length})` : `Generate ${recipients.length} wa.me Links`}
+          </Button>
+        )}
+
+        {/* Step 4 — Links list */}
+        {links.length > 0 && (
+          <Accordion expanded={expanded === 'links'} onChange={handleAccordion('links')}
+            sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Typography fontSize={20}>4️⃣</Typography>
+                <Box>
+                  <Typography fontWeight={700}>Send Links ({links.length})</Typography>
+                  <Typography variant="caption" color="text.secondary">Tap Send WhatsApp → opens WhatsApp with pre-filled message</Typography>
+                </Box>
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0 }}>
+              <Stack spacing={1}>
+                {links.map((r, idx) => (
+                  <Card key={idx} variant="outlined" sx={{ borderRadius: 2 }}>
+                    <CardContent sx={{ py: '10px !important', px: 1.5 }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
+                        </Box>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          {r.imgBlobUrl && (
+                            <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                              onClick={() => downloadImage(r.imgBlobUrl, r.name)}>
+                              Image
+                            </Button>
+                          )}
+                          <Button size="small" variant="contained" color="success"
+                            href={r.waUrl} target="_blank" rel="noopener noreferrer"
+                            component="a">
+                            📱 Send WhatsApp
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+        )}
+
+      </Stack>
+    </PageSurface>
+  );
+}
+
 // ── Logs panel ────────────────────────────────────────────────────────────────
 
 function LogsPanel({ logs, isBaileys }) {
@@ -2225,6 +2550,7 @@ export default function WhatsAppPage() {
           blasts={blasts}
         />
       )}
+      {useBaileys && tab === 'manual' && <ManualInvitePanel />}
       {useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys />}
       {useBaileys && tab === 'logs'  && <LogsPanel logs={baileysLogs} isBaileys />}
       {useBaileys && tab === 'setup' && (
@@ -2279,6 +2605,7 @@ export default function WhatsAppPage() {
           blasts={blasts}
         />
       )}
+      {!useBaileys && tab === 'manual' && <ManualInvitePanel />}
       {!useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys={false} />}
       {!useBaileys && tab === 'templates' && (
         <CollectionSection title="Templates" subtitle="Approved WhatsApp message templates." rows={templateRows} />
