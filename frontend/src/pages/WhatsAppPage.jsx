@@ -32,26 +32,28 @@ import { isInvitationOnly } from '../utils/accessControl';
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
 const officialTabs = [
-  ['inbox',    'Inbox'],
-  ['rules',    'Auto Reply'],
-  ['send',     'Quick Send'],
-  ['invite',   'Invitation'],
-  ['manual',   '📱 Manual'],
-  ['blasts',   'Blast History'],
-  ['templates','Templates'],
+  ['inbox',      'Inbox'],
+  ['rules',      'Auto Reply'],
+  ['send',       'Quick Send'],
+  ['invite',     'Invitation'],
+  ['manual',     '📱 Manual'],
+  ['campaigns',  '🗓 Campaigns'],
+  ['blasts',     'Blast History'],
+  ['templates',  'Templates'],
   ['connections','Connections'],
-  ['logs',     'Logs'],
+  ['logs',       'Logs'],
 ];
 
 const baileysTabs = [
-  ['inbox',  'Inbox'],
-  ['rules',  'Auto Reply'],
-  ['send',   'Quick Send'],
-  ['invite', 'Invitation'],
-  ['manual', '📱 Manual'],
-  ['blasts', 'Blast History'],
-  ['logs',   'Logs'],
-  ['setup',  'Setup / QR'],
+  ['inbox',     'Inbox'],
+  ['rules',     'Auto Reply'],
+  ['send',      'Quick Send'],
+  ['invite',    'Invitation'],
+  ['manual',    '📱 Manual'],
+  ['campaigns', '🗓 Campaigns'],
+  ['blasts',    'Blast History'],
+  ['logs',      'Logs'],
+  ['setup',     'Setup / QR'],
 ];
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -503,6 +505,82 @@ function AutoReplyPanel({ rules, onAdd, onEdit, isBaileys }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // ── Invitation Panel (Enhanced) ───────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ── Save Campaign Button — shared by InvitationPanel and ManualInvitePanel ────
+
+function SaveCampaignButton({ getPayload, disabled = false }) {
+  const [open,        setOpen]        = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [scheduleOn,  setScheduleOn]  = useState(false);
+  const [scheduleAt,  setScheduleAt]  = useState('');
+  const [savedOk,     setSavedOk]     = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = getPayload();
+      if (scheduleOn && scheduleAt) {
+        payload.scheduledAt = new Date(scheduleAt).toISOString();
+        payload.status = 'SCHEDULED';
+      } else {
+        payload.status = 'DRAFT';
+      }
+      await whatsappService.saveCampaign(payload);
+      setSavedOk(true);
+      setTimeout(() => { setSavedOk(false); setOpen(false); setScheduleOn(false); setScheduleAt(''); }, 1500);
+    } catch (e) {
+      alert(e?.response?.data?.message || 'Save failed');
+    } finally { setSaving(false); }
+  };
+
+  // min datetime = now (local) formatted for datetime-local input
+  const minDateTime = new Date(Date.now() + 60000).toISOString().slice(0, 16);
+
+  return (
+    <>
+      <Button variant="outlined" size="large" startIcon={<span>🗓</span>}
+        disabled={disabled} onClick={() => setOpen(true)}>
+        Save Campaign
+      </Button>
+      <ResponsiveDialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="xs">
+        <CardContent>
+          <Typography variant="h6" fontWeight={800} sx={{ mb: 2 }}>Save Campaign</Typography>
+          <Stack spacing={2}>
+            <FormControlLabel
+              control={<Switch checked={scheduleOn} color="primary"
+                onChange={e => setScheduleOn(e.target.checked)} />}
+              label={<Typography variant="body2" fontWeight={600}>Schedule for later</Typography>}
+            />
+            {scheduleOn && (
+              <TextField fullWidth size="small" type="datetime-local" label="Send at"
+                inputProps={{ min: minDateTime }}
+                value={scheduleAt} onChange={e => setScheduleAt(e.target.value)}
+                InputLabelProps={{ shrink: true }} />
+            )}
+            {!scheduleOn && (
+              <Typography variant="body2" color="text.secondary">
+                Campaign saved as <strong>DRAFT</strong>. Go to 🗓 Campaigns tab to send it anytime.
+              </Typography>
+            )}
+            {scheduleOn && scheduleAt && (
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                Will auto-send via Baileys at {new Date(scheduleAt).toLocaleString()}.<br />
+                Server must be running at that time.
+              </Alert>
+            )}
+            {savedOk && <Alert severity="success">Campaign saved ✅</Alert>}
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button onClick={() => setOpen(false)}>Cancel</Button>
+              <Button variant="contained" onClick={handleSave} disabled={saving || (scheduleOn && !scheduleAt)}>
+                {saving ? <CircularProgress size={18} /> : scheduleOn ? 'Schedule' : 'Save Draft'}
+              </Button>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </ResponsiveDialog>
+    </>
+  );
+}
 
 function InvitationPanel({
   isBaileys,
@@ -1314,30 +1392,39 @@ function InvitationPanel({
         {!queueActive && !queueDone && (
           <Card><CardContent>
             <Stack spacing={2}>
-              <TextField
-                fullWidth size="small"
-                label="Blast Title (saved to history)"
-                value={blastTitle}
-                onChange={e => setBlastTitle(e.target.value)}
-                placeholder={`Blast ${new Date().toLocaleDateString()}`}
-              />
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <TextField fullWidth size="small" label="Blast Title (saved to history)"
+                value={blastTitle} onChange={e => setBlastTitle(e.target.value)}
+                placeholder={`Blast ${new Date().toLocaleDateString()}`} />
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
                 <Typography color="text.secondary" variant="body2">
                   {totalCount} recipient{totalCount !== 1 ? 's' : ''} selected
                   {overLimit && ` — only first ${MAX_RECIPIENTS} will be sent`}
                 </Typography>
-                <Tooltip title={`Max ${MAX_PER_MINUTE}/min · ${MAX_PER_HOUR}/hr · ${DELAY_MIN_S}–${DELAY_MAX_S}s gap`}>
-                  <span>
-                    <Button
-                      variant="contained" color={accentColor}
-                      size="large"
-                      startIcon={<SendIcon />}
-                      disabled={totalCount === 0 || (!invitationForm.imageUrl && !invitationForm.message.trim())}
-                      onClick={startQueue}>
-                      Start Blast {totalCount > 0 ? `(${Math.min(totalCount, MAX_RECIPIENTS)})` : ''}
-                    </Button>
-                  </span>
-                </Tooltip>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent="flex-end">
+                  <SaveCampaignButton
+                    getPayload={() => ({
+                      title:       blastTitle.trim() || `Blast ${new Date().toLocaleDateString()}`,
+                      imageUrl:    invFormRef.current.imageUrl,
+                      message:     invFormRef.current.message,
+                      fontStyle:   fontStyleRef.current,
+                      includeRsvp: invFormRef.current.includeRsvp,
+                      rsvpYesLabel:invFormRef.current.rsvpYesLabel,
+                      rsvpNoLabel: invFormRef.current.rsvpNoLabel,
+                      recipients:  getCheckedRecipients().slice(0, MAX_RECIPIENTS).map(r => ({ name: r.name, mobile: r.mobile })),
+                      type: isBaileys ? 'AUTO' : 'MANUAL',
+                    })}
+                    disabled={totalCount === 0 || (!invitationForm.imageUrl && !invitationForm.message.trim())}
+                  />
+                  <Tooltip title={`Max ${MAX_PER_MINUTE}/min · ${MAX_PER_HOUR}/hr · ${DELAY_MIN_S}–${DELAY_MAX_S}s gap`}>
+                    <span>
+                      <Button variant="contained" color={accentColor} size="large" startIcon={<SendIcon />}
+                        disabled={totalCount === 0 || (!invitationForm.imageUrl && !invitationForm.message.trim())}
+                        onClick={startQueue}>
+                        Start Blast {totalCount > 0 ? `(${Math.min(totalCount, MAX_RECIPIENTS)})` : ''}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </Stack>
               </Stack>
             </Stack>
           </CardContent></Card>
@@ -1620,14 +1707,27 @@ function ManualInvitePanel() {
           </AccordionDetails>
         </Accordion>
 
-        {/* Generate button */}
+        {/* Generate + Save Campaign buttons */}
         {recipients.length > 0 && (
-          <Button variant="contained" size="large" color="success"
-            startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
-            disabled={generating || (!message.trim() && !imageUrl)}
-            onClick={generateLinks} sx={{ borderRadius: 3 }}>
-            {generating ? `Generating… (${links.length}/${recipients.length})` : `Generate ${recipients.length} wa.me Links`}
-          </Button>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <SaveCampaignButton
+              getPayload={() => ({
+                title:      `Manual — ${new Date().toLocaleDateString()}`,
+                imageUrl,
+                message,
+                fontStyle,
+                recipients: recipients.map(r => ({ name: r.name, mobile: r.mobile })),
+                type: 'MANUAL',
+              })}
+              disabled={!message.trim() && !imageUrl}
+            />
+            <Button variant="contained" size="large" color="success" sx={{ flex: 1, borderRadius: 3 }}
+              startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
+              disabled={generating || (!message.trim() && !imageUrl)}
+              onClick={generateLinks}>
+              {generating ? `Generating… (${links.length}/${recipients.length})` : `Generate ${recipients.length} wa.me Links`}
+            </Button>
+          </Stack>
         )}
 
         {/* Step 4 — Links list */}
@@ -1675,6 +1775,214 @@ function ManualInvitePanel() {
           </Accordion>
         )}
 
+      </Stack>
+    </PageSurface>
+  );
+}
+
+// ── Campaigns Panel ───────────────────────────────────────────────────────────
+
+function CampaignsPanel() {
+  const [campaigns, setCampaigns]   = useState([]);
+  const [loading,   setLoading]     = useState(true);
+  const [selected,  setSelected]    = useState(null);  // detail view
+  const [saving,    setSaving]      = useState(false);
+  const [sending,   setSending]     = useState('');    // campaign id being sent
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await whatsappService.listCampaigns();
+      setCampaigns(Array.isArray(r.data) ? r.data : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Poll every 30s so status updates (SENDING→SENT) reflect live
+  useEffect(() => {
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this campaign?')) return;
+    await whatsappService.deleteCampaign(id).catch(() => null);
+    load();
+  };
+
+  const handleSendNow = async (id) => {
+    setSending(id);
+    try {
+      await whatsappService.sendCampaignNow(id);
+      load();
+    } catch (e) {
+      alert(e?.response?.data?.message || 'Send failed');
+    } finally { setSending(''); }
+  };
+
+  const handleCancel = async (id) => {
+    await whatsappService.updateCampaign(id, { status: 'CANCELLED' }).catch(() => null);
+    load();
+  };
+
+  const statusColor = (s) =>
+    s === 'SENT'      ? 'success' :
+    s === 'SENDING'   ? 'warning' :
+    s === 'SCHEDULED' ? 'primary' :
+    s === 'CANCELLED' ? 'error'   : 'default';
+
+  // ── Detail view ─────────────────────────────────────────────────────────────
+  if (selected) {
+    const r = selected.recipients || [];
+    const sent   = r.filter(x => x.status === 'SENT').length;
+    const failed = r.filter(x => x.status === 'FAILED').length;
+    const pending = r.filter(x => x.status === 'PENDING').length;
+    return (
+      <PageSurface>
+        <Stack spacing={2}>
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+              <Box>
+                <Typography variant="h6" fontWeight={800}>{selected.title}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selected.type} · {selected.status} · {new Date(selected.createdAt).toLocaleString()}
+                </Typography>
+                {selected.scheduledAt && (
+                  <Typography variant="body2" color="primary.main">
+                    🗓 Scheduled: {new Date(selected.scheduledAt).toLocaleString()}
+                  </Typography>
+                )}
+              </Box>
+              <Button size="small" variant="outlined" onClick={() => setSelected(null)}>← Back</Button>
+            </Stack>
+          </CardContent></Card>
+
+          <Grid container spacing={2}>
+            {[['Total', r.length, 'text.primary'], ['Sent', sent, 'success.main'], ['Failed', failed, 'error.main'], ['Pending', pending, 'text.secondary']].map(([label, val, color]) => (
+              <Grid key={label} size={{ xs: 6, md: 3 }}>
+                <Card><CardContent sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" fontWeight={800} color={color}>{val}</Typography>
+                  <Typography variant="body2" color="text.secondary">{label}</Typography>
+                </CardContent></Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: selected.imageUrl ? 7 : 12 }}>
+              <Card><CardContent>
+                <Typography fontWeight={700} sx={{ mb: 1 }}>Message</Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                  {selected.message || '(no message)'}
+                </Typography>
+              </CardContent></Card>
+            </Grid>
+            {selected.imageUrl && (
+              <Grid size={{ xs: 12, md: 5 }}>
+                <Card><CardContent>
+                  <Typography fontWeight={700} sx={{ mb: 1 }}>Image</Typography>
+                  <Box component="img" src={selected.imageUrl} alt="Campaign image"
+                    sx={{ width: '100%', borderRadius: 1, objectFit: 'contain', maxHeight: 300 }} />
+                </CardContent></Card>
+              </Grid>
+            )}
+          </Grid>
+
+          {r.length > 0 && (
+            <Card><CardContent>
+              <Typography fontWeight={700} sx={{ mb: 1.5 }}>Recipients ({r.length})</Typography>
+              <Box sx={{ maxHeight: 360, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                {r.map((rec, idx) => (
+                  <Stack key={idx} direction="row" alignItems="center" spacing={1.5}
+                    sx={{ px: 1.5, py: 0.75, borderBottom: idx < r.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ minWidth: 24 }}>{idx + 1}</Typography>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>{rec.name || '-'}</Typography>
+                      <Typography variant="caption" color="text.secondary">{rec.mobile}</Typography>
+                    </Box>
+                    <Chip size="small"
+                      label={rec.status === 'SENT' ? '✅ Sent' : rec.status === 'FAILED' ? '❌ Failed' : '⏳ Pending'}
+                      color={rec.status === 'SENT' ? 'success' : rec.status === 'FAILED' ? 'error' : 'default'} />
+                  </Stack>
+                ))}
+              </Box>
+            </CardContent></Card>
+          )}
+        </Stack>
+      </PageSurface>
+    );
+  }
+
+  // ── List view ────────────────────────────────────────────────────────────────
+  return (
+    <PageSurface>
+      <Stack spacing={2}>
+        <Card><CardContent sx={{ py: '10px !important', px: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>🗓 Campaigns</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Save &amp; schedule invitation campaigns · auto-send via Baileys at scheduled time
+              </Typography>
+            </Box>
+            <Button size="small" variant="outlined" onClick={load} disabled={loading}>Refresh</Button>
+          </Stack>
+        </CardContent></Card>
+
+        {loading && <LinearProgress />}
+
+        {!loading && campaigns.length === 0 && (
+          <Card><CardContent>
+            <Typography color="text.secondary" textAlign="center" py={2}>
+              No campaigns yet. Use <strong>Save Campaign</strong> in the Invitation or Manual tab to create one.
+            </Typography>
+          </CardContent></Card>
+        )}
+
+        {campaigns.map(c => (
+          <Card key={c._id} variant="outlined" sx={{ borderRadius: 2 }}>
+            <CardContent sx={{ py: '12px !important', px: 2 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+                <Box sx={{ flex: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                    <Typography fontWeight={700}>{c.title || 'Untitled'}</Typography>
+                    <Chip label={c.status} size="small" color={statusColor(c.status)} />
+                    <Chip label={c.type} size="small" variant="outlined" />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    {c.recipients?.length || 0} recipients
+                    {c.scheduledAt ? ` · 🗓 ${new Date(c.scheduledAt).toLocaleString()}` : ''}
+                    {c.sentCount > 0 ? ` · ✅ ${c.sentCount} sent` : ''}
+                    {c.failedCount > 0 ? ` · ❌ ${c.failedCount} failed` : ''}
+                  </Typography>
+                  {c.message && (
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                      💬 {c.message.slice(0, 60)}{c.message.length > 60 ? '…' : ''}
+                    </Typography>
+                  )}
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Button size="small" variant="outlined" onClick={() => setSelected(c)}>Report</Button>
+                  {['DRAFT','SCHEDULED'].includes(c.status) && (
+                    <Button size="small" variant="contained" color="success"
+                      disabled={sending === c._id}
+                      startIcon={sending === c._id ? <CircularProgress size={14} color="inherit" /> : null}
+                      onClick={() => handleSendNow(c._id)}>
+                      Send Now
+                    </Button>
+                  )}
+                  {c.status === 'SCHEDULED' && (
+                    <Button size="small" variant="outlined" color="warning" onClick={() => handleCancel(c._id)}>Cancel</Button>
+                  )}
+                  {['SENT','CANCELLED'].includes(c.status) && (
+                    <Button size="small" variant="outlined" color="error" onClick={() => handleDelete(c._id)}>Delete</Button>
+                  )}
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        ))}
       </Stack>
     </PageSurface>
   );
@@ -2550,8 +2858,9 @@ export default function WhatsAppPage() {
           blasts={blasts}
         />
       )}
-      {useBaileys && tab === 'manual' && <ManualInvitePanel />}
-      {useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys />}
+      {useBaileys && tab === 'manual'     && <ManualInvitePanel />}
+      {useBaileys && tab === 'campaigns'  && <CampaignsPanel />}
+      {useBaileys && tab === 'blasts'     && <BlastHistoryPanel blasts={blasts} isBaileys />}
       {useBaileys && tab === 'logs'  && <LogsPanel logs={baileysLogs} isBaileys />}
       {useBaileys && tab === 'setup' && (
         <BaileysSetup
@@ -2605,8 +2914,9 @@ export default function WhatsAppPage() {
           blasts={blasts}
         />
       )}
-      {!useBaileys && tab === 'manual' && <ManualInvitePanel />}
-      {!useBaileys && tab === 'blasts' && <BlastHistoryPanel blasts={blasts} isBaileys={false} />}
+      {!useBaileys && tab === 'manual'    && <ManualInvitePanel />}
+      {!useBaileys && tab === 'campaigns' && <CampaignsPanel />}
+      {!useBaileys && tab === 'blasts'    && <BlastHistoryPanel blasts={blasts} isBaileys={false} />}
       {!useBaileys && tab === 'templates' && (
         <CollectionSection title="Templates" subtitle="Approved WhatsApp message templates." rows={templateRows} />
       )}

@@ -40,6 +40,14 @@ const whatsappService = {
     : api.post('/baileys/rules', payload),
 
   baileysGetLogs:      ()           => api.get('/baileys/logs'),
+
+  // ── Campaigns (scheduled sends) ───────────────────────────────────────────
+  listCampaigns:       ()           => api.get('/campaigns'),
+  saveCampaign:        (payload)    => api.post('/campaigns', payload),
+  getCampaign:         (id)         => api.get(`/campaigns/${id}`),
+  updateCampaign:      (id, data)   => api.patch(`/campaigns/${id}`, data),
+  deleteCampaign:      (id)         => api.delete(`/campaigns/${id}`),
+  sendCampaignNow:     (id)         => api.post(`/campaigns/${id}/send`),
 };
 
 export default whatsappService;
