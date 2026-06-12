@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const recipientSchema = new mongoose.Schema({
   name:   { type: String, default: '' },
   mobile: { type: String, default: '' },
+  waUrl:  { type: String, default: '' },
   status: { type: String, enum: ['PENDING','SENT','FAILED'], default: 'PENDING' },
   error:  { type: String, default: '' },
   sentAt: { type: Date },

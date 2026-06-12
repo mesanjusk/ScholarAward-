@@ -36,9 +36,10 @@ const officialTabs = [
   ['rules',      'Auto Reply'],
   ['send',       'Quick Send'],
   ['invite',     'Invitation'],
-  ['manual',     '📱 Manual'],
-  ['campaigns',  '🗓 Campaigns'],
-  ['blasts',     'Blast History'],
+  ['manual',          '📱 Manual'],
+  ['manual-saved',    '📱 Saved'],
+  ['campaigns',       '🗓 Campaigns'],
+  ['blasts',          'Blast History'],
   ['templates',  'Templates'],
   ['connections','Connections'],
   ['logs',       'Logs'],
@@ -49,9 +50,10 @@ const baileysTabs = [
   ['rules',     'Auto Reply'],
   ['send',      'Quick Send'],
   ['invite',    'Invitation'],
-  ['manual',    '📱 Manual'],
-  ['campaigns', '🗓 Campaigns'],
-  ['blasts',    'Blast History'],
+  ['manual',       '📱 Manual'],
+  ['manual-saved', '📱 Saved'],
+  ['campaigns',    '🗓 Campaigns'],
+  ['blasts',       'Blast History'],
   ['logs',      'Logs'],
   ['setup',     'Setup / QR'],
 ];
@@ -1460,6 +1462,8 @@ function ManualInvitePanel() {
   const [canvasHeight,  setCanvasHeight]  = useState(400);
   const [links,         setLinks]         = useState([]);   // generated wa.me entries
   const [generating,    setGenerating]    = useState(false);
+  const [savedCampaignId, setSavedCampaignId] = useState(null);
+  const [autoSaving,    setAutoSaving]    = useState(false);
   const [uploadingImg,  setUploadingImg]  = useState(false);
   const [expanded,      setExpanded]      = useState('excel');
   const [previewIdx,    setPreviewIdx]    = useState(0);
@@ -1552,6 +1556,28 @@ function ManualInvitePanel() {
     setLinks(result);
     setGenerating(false);
     setExpanded('links');
+
+    // Auto-save to DB so links are accessible in "📱 Saved" tab
+    setAutoSaving(true);
+    try {
+      const payload = {
+        title:      `Manual — ${new Date().toLocaleDateString()}`,
+        imageUrl,
+        message,
+        fontStyle,
+        type:       'MANUAL',
+        status:     'DRAFT',
+        recipients: result.map(r => ({ name: r.name, mobile: r.mobile, waUrl: r.waUrl })),
+      };
+      let res;
+      if (savedCampaignId) {
+        res = await whatsappService.updateCampaign(savedCampaignId, payload);
+      } else {
+        res = await whatsappService.saveCampaign(payload);
+        setSavedCampaignId(res.data?._id || null);
+      }
+    } catch (_) { /* silent — links still shown in UI */ }
+    setAutoSaving(false);
   };
 
   const downloadImage = (blobUrl, name) => {
@@ -1727,6 +1753,8 @@ function ManualInvitePanel() {
               onClick={generateLinks}>
               {generating ? `Generating… (${links.length}/${recipients.length})` : `Generate ${recipients.length} wa.me Links`}
             </Button>
+            {autoSaving && <Typography variant="caption" color="text.secondary" alignSelf="center">💾 Saving…</Typography>}
+            {!autoSaving && savedCampaignId && <Typography variant="caption" color="success.main" alignSelf="center">✅ Auto-saved</Typography>}
           </Stack>
         )}
 
@@ -1775,6 +1803,192 @@ function ManualInvitePanel() {
           </Accordion>
         )}
 
+      </Stack>
+    </PageSurface>
+  );
+}
+
+// ── Manual Campaigns Panel (saved wa.me link campaigns) ───────────────────────
+
+function ManualCampaignsPanel() {
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [selected,  setSelected]  = useState(null);
+  const [imgCache,  setImgCache]  = useState({});   // name -> blobUrl
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await whatsappService.listCampaigns();
+      const all = Array.isArray(r.data) ? r.data : [];
+      setCampaigns(all.filter(c => c.type === 'MANUAL'));
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this saved campaign?')) return;
+    await whatsappService.deleteCampaign(id).catch(() => null);
+    load();
+  };
+
+  // Re-generate personalised image blob for a recipient (uses saved imageUrl + fontStyle)
+  const getImg = useCallback(async (campaign, recipientName) => {
+    const cacheKey = `${campaign._id}__${recipientName}`;
+    if (imgCache[cacheKey]) return imgCache[cacheKey];
+    if (!campaign.imageUrl) return null;
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const off = document.createElement('canvas');
+        off.width  = 1200;
+        off.height = Math.round(1200 * (img.naturalHeight / img.naturalWidth)) || 800;
+        drawNameOnCanvas(off, img, recipientName, campaign.fontStyle || emptyFontStyle);
+        off.toBlob((blob) => {
+          const url = blob ? URL.createObjectURL(blob) : null;
+          setImgCache(prev => ({ ...prev, [cacheKey]: url }));
+          resolve(url);
+        }, 'image/png');
+      };
+      img.onerror = () => resolve(null);
+      img.src = campaign.imageUrl;
+    });
+  }, [imgCache]);
+
+  const downloadImg = async (campaign, name) => {
+    const url = await getImg(campaign, name);
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url; a.download = `invite_${name.replace(/\s+/g,'_')}.png`; a.click();
+  };
+
+  // ── Detail view ──────────────────────────────────────────────────────────────
+  if (selected) {
+    const recs = selected.recipients || [];
+    return (
+      <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
+        <Stack spacing={2}>
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+              <Box>
+                <Typography variant="h6" fontWeight={800}>{selected.title}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {recs.length} recipients · saved {new Date(selected.createdAt).toLocaleString()}
+                </Typography>
+              </Box>
+              <Button size="small" variant="outlined" onClick={() => setSelected(null)}>← Back</Button>
+            </Stack>
+          </CardContent></Card>
+
+          {selected.message && (
+            <Card><CardContent>
+              <Typography fontWeight={700} sx={{ mb: 1 }}>Message</Typography>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                {selected.message}
+              </Typography>
+            </CardContent></Card>
+          )}
+
+          {selected.imageUrl && (
+            <Card><CardContent>
+              <Typography fontWeight={700} sx={{ mb: 1 }}>Base Image</Typography>
+              <Box component="img" src={selected.imageUrl} alt="base"
+                sx={{ width: '100%', maxWidth: 320, borderRadius: 1, objectFit: 'contain' }} />
+            </CardContent></Card>
+          )}
+
+          <Card><CardContent>
+            <Typography fontWeight={700} sx={{ mb: 1.5 }}>Recipients & Links ({recs.length})</Typography>
+            <Stack spacing={1}>
+              {recs.map((r, idx) => (
+                <Card key={idx} variant="outlined" sx={{ borderRadius: 2 }}>
+                  <CardContent sx={{ py: '10px !important', px: 1.5 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        {selected.imageUrl && (
+                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                            onClick={() => downloadImg(selected, r.name)}>
+                            Image
+                          </Button>
+                        )}
+                        {r.waUrl ? (
+                          <Button size="small" variant="contained" color="success"
+                            href={r.waUrl} target="_blank" rel="noopener noreferrer" component="a">
+                            📱 Send WhatsApp
+                          </Button>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">No link saved</Typography>
+                        )}
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          </CardContent></Card>
+        </Stack>
+      </PageSurface>
+    );
+  }
+
+  // ── List view ────────────────────────────────────────────────────────────────
+  return (
+    <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
+      <Stack spacing={2}>
+        <Card><CardContent sx={{ py: '10px !important', px: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>📱 Saved Manual Campaigns</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Campaigns saved from the Manual tab — wa.me links ready to reuse
+              </Typography>
+            </Box>
+            <Button size="small" variant="outlined" onClick={load} disabled={loading}>Refresh</Button>
+          </Stack>
+        </CardContent></Card>
+
+        {loading && <LinearProgress />}
+
+        {!loading && campaigns.length === 0 && (
+          <Card><CardContent>
+            <Typography color="text.secondary" textAlign="center" py={2}>
+              No saved manual campaigns yet. Go to <strong>📱 Manual</strong> tab, upload Excel &amp; generate links — they auto-save here.
+            </Typography>
+          </CardContent></Card>
+        )}
+
+        {campaigns.map(c => (
+          <Card key={c._id} variant="outlined" sx={{ borderRadius: 2 }}>
+            <CardContent sx={{ py: '12px !important', px: 2 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+                <Box sx={{ flex: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                    <Typography fontWeight={700}>{c.title || 'Untitled'}</Typography>
+                    <Chip label={`${c.recipients?.length || 0} recipients`} size="small" variant="outlined" />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    Saved {new Date(c.createdAt).toLocaleString()}
+                  </Typography>
+                  {c.message && (
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                      💬 {c.message.slice(0, 60)}{c.message.length > 60 ? '…' : ''}
+                    </Typography>
+                  )}
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Button size="small" variant="contained" onClick={() => setSelected(c)}>Open Links</Button>
+                  <Button size="small" variant="outlined" color="error" onClick={() => handleDelete(c._id)}>Delete</Button>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        ))}
       </Stack>
     </PageSurface>
   );
@@ -2858,8 +3072,9 @@ export default function WhatsAppPage() {
           blasts={blasts}
         />
       )}
-      {useBaileys && tab === 'manual'     && <ManualInvitePanel />}
-      {useBaileys && tab === 'campaigns'  && <CampaignsPanel />}
+      {useBaileys && tab === 'manual'        && <ManualInvitePanel />}
+      {useBaileys && tab === 'manual-saved' && <ManualCampaignsPanel />}
+      {useBaileys && tab === 'campaigns'    && <CampaignsPanel />}
       {useBaileys && tab === 'blasts'     && <BlastHistoryPanel blasts={blasts} isBaileys />}
       {useBaileys && tab === 'logs'  && <LogsPanel logs={baileysLogs} isBaileys />}
       {useBaileys && tab === 'setup' && (
@@ -2914,8 +3129,9 @@ export default function WhatsAppPage() {
           blasts={blasts}
         />
       )}
-      {!useBaileys && tab === 'manual'    && <ManualInvitePanel />}
-      {!useBaileys && tab === 'campaigns' && <CampaignsPanel />}
+      {!useBaileys && tab === 'manual'        && <ManualInvitePanel />}
+      {!useBaileys && tab === 'manual-saved'  && <ManualCampaignsPanel />}
+      {!useBaileys && tab === 'campaigns'     && <CampaignsPanel />}
       {!useBaileys && tab === 'blasts'    && <BlastHistoryPanel blasts={blasts} isBaileys={false} />}
       {!useBaileys && tab === 'templates' && (
         <CollectionSection title="Templates" subtitle="Approved WhatsApp message templates." rows={templateRows} />
