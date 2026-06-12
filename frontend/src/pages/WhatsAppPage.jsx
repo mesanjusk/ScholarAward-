@@ -18,6 +18,16 @@ import StopIcon         from '@mui/icons-material/Stop';
 import DownloadIcon     from '@mui/icons-material/Download';
 import NavigateNextIcon     from '@mui/icons-material/NavigateNext';
 import NavigateBeforeIcon   from '@mui/icons-material/NavigateBefore';
+import HistoryIcon          from '@mui/icons-material/History';
+import EditIcon             from '@mui/icons-material/Edit';
+import DeleteIcon           from '@mui/icons-material/Delete';
+import Fab                  from '@mui/material/Fab';
+import Portal               from '@mui/material/Portal';
+import Dialog               from '@mui/material/Dialog';
+import DialogTitle          from '@mui/material/DialogTitle';
+import DialogContent        from '@mui/material/DialogContent';
+import DialogActions        from '@mui/material/DialogActions';
+import IconButton           from '@mui/material/IconButton';
 import PageHeader    from '../components/PageHeader';
 import PageSurface   from '../components/PageSurface';
 import ResponsiveDialog from '../components/ResponsiveDialog';
@@ -1273,6 +1283,1127 @@ function InvitationPanel({
           </Stack>
         )}
 
+      </Stack>
+    </PageSurface>
+  );
+}
+
+// ── Manual Invite Panel (wa.me links — works even when API is banned) ─────────
+
+function ManualInvitePanel() {
+  const canvasRef    = useRef(null);
+  const imageElRef   = useRef(null);
+  const isDragging   = useRef(false);
+
+  const [fileName,      setFileName]      = useState('');
+  const [recipients,    setRecipients]    = useState([]);
+  const [imageUrl,      setImageUrl]      = useState('');
+  const [message,       setMessage]       = useState('');
+  const [fontStyle,     setFontStyle]     = useState(emptyFontStyle);
+  const [imageLoaded,   setImageLoaded]   = useState(false);
+  const [canvasHeight,  setCanvasHeight]  = useState(400);
+  const [links,         setLinks]         = useState([]);   // generated wa.me entries
+  const [generating,    setGenerating]    = useState(false);
+  const [savedCampaignId, setSavedCampaignId] = useState(null);
+  const [autoSaving,    setAutoSaving]    = useState(false);
+  const [sentSet,       setSentSet]       = useState(new Set());
+  const [linkTab,       setLinkTab]       = useState('tosend');
+  const [linkSearch,    setLinkSearch]    = useState('');
+  const [uploadingImg,  setUploadingImg]  = useState(false);
+  const [expanded,      setExpanded]      = useState('excel');
+  const [previewIdx,    setPreviewIdx]    = useState(0);
+
+  const handleAccordion = (panel) => (_, isOpen) => setExpanded(isOpen ? panel : false);
+
+  // ── Load image ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!imageUrl) { setImageLoaded(false); imageElRef.current = null; return; }
+    setImageLoaded(false);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      imageElRef.current = img;
+      const h = img.naturalHeight && img.naturalWidth
+        ? Math.round(600 * img.naturalHeight / img.naturalWidth) : 400;
+      setCanvasHeight(Math.max(200, Math.min(h, 900)));
+      setImageLoaded(true);
+    };
+    img.onerror = () => { imageElRef.current = null; setImageLoaded(false); };
+    img.src = imageUrl;
+  }, [imageUrl]);
+
+  // ── Redraw canvas ───────────────────────────────────────────────────────────
+  const redraw = useCallback(() => {
+    if (!imageLoaded || !canvasRef.current || !imageElRef.current) return;
+    const name = recipients[previewIdx]?.name || 'Guest';
+    drawNameOnCanvas(canvasRef.current, imageElRef.current, name, fontStyle);
+  }, [imageLoaded, previewIdx, fontStyle, recipients]);
+  useEffect(() => { redraw(); }, [redraw]);
+
+  // ── Drag to position ────────────────────────────────────────────────────────
+  const getFrac = (e) => {
+    const c = canvasRef.current; if (!c) return null;
+    const r = c.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: Math.min(1, Math.max(0, (cx - r.left) / r.width)), y: Math.min(1, Math.max(0, (cy - r.top) / r.height)) };
+  };
+  const onDragStart = (e) => { e.preventDefault(); isDragging.current = true; const p = getFrac(e); if (p) setFontStyle(f => ({ ...f, ...p })); };
+  const onDragMove  = (e) => { if (!isDragging.current) return; e.preventDefault(); const p = getFrac(e); if (p) setFontStyle(f => ({ ...f, ...p })); };
+  const onDragEnd   = () => { isDragging.current = false; };
+
+  // ── Upload image ────────────────────────────────────────────────────────────
+  const onUploadImage = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingImg(true);
+    try {
+      const { default: api } = await import('../api');
+      const fd = new FormData(); fd.append('file', file); fd.append('folder', 'bk_award_invites');
+      const res = await api.post('/uploads/public', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setImageUrl(res?.data?.url || '');
+    } finally { setUploadingImg(false); }
+  };
+
+  // ── Parse Excel ─────────────────────────────────────────────────────────────
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setFileName(file.name);
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf, { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    setRecipients(parseRowsToRecipients(rows));
+    setLinks([]);
+    setPreviewIdx(0);
+    setExpanded('image');
+  };
+
+  // ── Build personalised image blob URL for one recipient ─────────────────────
+  const buildBlobUrl = (name) => new Promise((resolve) => {
+    if (!imageElRef.current) { resolve(null); return; }
+    const off = document.createElement('canvas');
+    off.width  = 1200;
+    off.height = Math.round(1200 * (imageElRef.current.naturalHeight / imageElRef.current.naturalWidth)) || 800;
+    drawNameOnCanvas(off, imageElRef.current, name, fontStyle);
+    off.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : null), 'image/png');
+  });
+
+  // ── Generate wa.me links for all recipients ──────────────────────────────────
+  const generateLinks = async () => {
+    if (!recipients.length) return;
+    setGenerating(true);
+    const result = [];
+    for (const r of recipients) {
+      const personalMsg = (message || '').replace(/\{name\}/gi, r.name);
+      const waUrl = `https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}`;
+      const imgBlobUrl = imageLoaded ? await buildBlobUrl(r.name) : null;
+      result.push({ ...r, waUrl, imgBlobUrl, personalMsg });
+    }
+    setLinks(result);
+    setGenerating(false);
+    setExpanded('links');
+
+    // Auto-save to DB so links are accessible in "📱 Saved" tab
+    setAutoSaving(true);
+    try {
+      const payload = {
+        title:      `Manual — ${new Date().toLocaleDateString()}`,
+        imageUrl,
+        message,
+        fontStyle,
+        type:       'MANUAL',
+        status:     'DRAFT',
+        recipients: result.map(r => ({ name: r.name, mobile: r.mobile, waUrl: r.waUrl })),
+      };
+      let res;
+      if (savedCampaignId) {
+        res = await whatsappService.updateCampaign(savedCampaignId, payload);
+      } else {
+        res = await whatsappService.saveCampaign(payload);
+        setSavedCampaignId(res.data?._id || null);
+      }
+    } catch (_) { /* silent — links still shown in UI */ }
+    setAutoSaving(false);
+  };
+
+  const downloadImage = (blobUrl, name) => {
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = `invite_${name.replace(/\s+/g, '_')}.png`; a.click();
+  };
+
+  return (
+    <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
+      <Stack spacing={1.5}>
+
+        {/* Header */}
+        <Card sx={{ borderRadius: 3 }}><CardContent sx={{ py: '10px !important', px: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Typography fontSize={22}>📱</Typography>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>Manual Invitation — wa.me Links</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Works even when API is banned · Upload Excel → generate links → tap to send from your phone
+              </Typography>
+            </Box>
+          </Stack>
+        </CardContent></Card>
+
+        {/* Step 1 — Excel Upload */}
+        <Accordion expanded={expanded === 'excel'} onChange={handleAccordion('excel')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={20}>1️⃣</Typography>
+              <Box>
+                <Typography fontWeight={700}>Upload Recipients Excel</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {recipients.length > 0 ? `✓ ${recipients.length} recipients loaded` : 'Columns: name, mobile (or phone/number/whatsapp)'}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Stack spacing={2}>
+              <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} sx={{ alignSelf: 'flex-start' }}>
+                Choose Excel / CSV
+                <input hidden type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} />
+              </Button>
+              {fileName && (
+                <Typography variant="body2" color="text.secondary">📄 {fileName} — <strong>{recipients.length}</strong> recipients found</Typography>
+              )}
+              {recipients.length > 0 && (
+                <Box sx={{ maxHeight: 180, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                  {recipients.map((r, i) => (
+                    <Stack key={i} direction="row" spacing={2} sx={{ px: 1.5, py: 0.75, borderBottom: i < recipients.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                      <Typography variant="body2" sx={{ minWidth: 24, color: 'text.secondary' }}>{i + 1}</Typography>
+                      <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>{r.name}</Typography>
+                      <Typography variant="body2" color="text.secondary">{r.mobile}</Typography>
+                    </Stack>
+                  ))}
+                </Box>
+              )}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Step 2 — Image */}
+        <Accordion expanded={expanded === 'image'} onChange={handleAccordion('image')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={20}>2️⃣</Typography>
+              <Box>
+                <Typography fontWeight={700}>Invitation Image</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {imageUrl ? '✓ Image set · drag to position name' : 'Optional — paste URL or upload'}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <TextField fullWidth size="small" label="Image URL" value={imageUrl}
+                  onChange={e => setImageUrl(e.target.value)} />
+                <Button component="label" variant="outlined" sx={{ whiteSpace: 'nowrap', minWidth: 100 }}
+                  startIcon={uploadingImg ? <CircularProgress size={16} /> : <UploadFileIcon />} disabled={uploadingImg}>
+                  {uploadingImg ? 'Uploading…' : 'Upload'}
+                  <input hidden accept="image/*" type="file" onChange={onUploadImage} />
+                </Button>
+              </Stack>
+
+              {imageUrl && (
+                <>
+                  <Typography variant="caption" color="text.secondary">✋ Drag to position name text on image</Typography>
+                  <Box sx={{ border: '2px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: '#111', cursor: 'crosshair', userSelect: 'none', touchAction: 'none' }}
+                    onMouseDown={onDragStart} onMouseMove={onDragMove} onMouseUp={onDragEnd} onMouseLeave={onDragEnd}
+                    onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd}>
+                    <canvas ref={canvasRef} width={600} height={canvasHeight} style={{ display: 'block', width: '100%', height: 'auto' }} />
+                  </Box>
+                  {recipients.length > 1 && (
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Button size="small" variant="outlined" startIcon={<NavigateBeforeIcon />}
+                        disabled={previewIdx === 0} onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}>Prev</Button>
+                      <Typography variant="body2" color="text.secondary" sx={{ flex: 1, textAlign: 'center' }}>
+                        {previewIdx + 1} / {recipients.length} · <strong>{recipients[previewIdx]?.name}</strong>
+                      </Typography>
+                      <Button size="small" variant="outlined" endIcon={<NavigateNextIcon />}
+                        disabled={previewIdx >= recipients.length - 1} onClick={() => setPreviewIdx(i => Math.min(recipients.length - 1, i + 1))}>Next</Button>
+                    </Stack>
+                  )}
+                  {/* Font style controls */}
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <TextField select size="small" label="Font" value={fontStyle.fontFamily} sx={{ minWidth: 130 }}
+                      onChange={e => setFontStyle(f => ({ ...f, fontFamily: e.target.value }))}>
+                      {FONT_FAMILIES.map(ff => <MenuItem key={ff.value} value={ff.value}>{ff.label}</MenuItem>)}
+                    </TextField>
+                    <TextField size="small" type="number" label="Size" value={fontStyle.fontSize} sx={{ width: 80 }}
+                      inputProps={{ min: 10, max: 200 }}
+                      onChange={e => setFontStyle(f => ({ ...f, fontSize: Number(e.target.value) }))} />
+                    <Stack spacing={0.25} justifyContent="center">
+                      <Typography variant="caption" color="text.secondary">Color</Typography>
+                      <input type="color" value={fontStyle.color}
+                        onChange={e => setFontStyle(f => ({ ...f, color: e.target.value }))}
+                        style={{ width: 44, height: 36, border: 'none', cursor: 'pointer', borderRadius: 4 }} />
+                    </Stack>
+                    <Button size="small" variant={fontStyle.fontWeight === 'bold' ? 'contained' : 'outlined'}
+                      onClick={() => setFontStyle(f => ({ ...f, fontWeight: f.fontWeight === 'bold' ? 'normal' : 'bold' }))}><strong>B</strong></Button>
+                    <Button size="small" variant={fontStyle.shadow ? 'contained' : 'outlined'}
+                      onClick={() => setFontStyle(f => ({ ...f, shadow: !f.shadow }))}>Shadow</Button>
+                  </Stack>
+                </>
+              )}
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Step 3 — Message */}
+        <Accordion expanded={expanded === 'message'} onChange={handleAccordion('message')}
+          sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography fontSize={20}>3️⃣</Typography>
+              <Box>
+                <Typography fontWeight={700}>WhatsApp Message</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {message ? message.slice(0, 50) + '…' : 'Write your message — {name} replaced per recipient'}
+                </Typography>
+              </Box>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <TextField fullWidth multiline minRows={5} label="Message"
+              value={message} onChange={e => setMessage(e.target.value)}
+              placeholder="Dear {name}, you are cordially invited to our event…"
+              helperText="{name} is automatically replaced with each recipient's name." />
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Generate + Save Campaign buttons */}
+        {recipients.length > 0 && (
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <SaveCampaignButton
+              getPayload={() => ({
+                title:      `Manual — ${new Date().toLocaleDateString()}`,
+                imageUrl,
+                message,
+                fontStyle,
+                recipients: recipients.map(r => ({ name: r.name, mobile: r.mobile })),
+                type: 'MANUAL',
+              })}
+              disabled={!message.trim() && !imageUrl}
+            />
+            <Button variant="contained" size="large" color="success" sx={{ flex: 1, borderRadius: 3 }}
+              startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
+              disabled={generating || (!message.trim() && !imageUrl)}
+              onClick={generateLinks}>
+              {generating ? `Generating… (${links.length}/${recipients.length})` : `Generate ${recipients.length} wa.me Links`}
+            </Button>
+            {autoSaving && <Typography variant="caption" color="text.secondary" alignSelf="center">💾 Saving…</Typography>}
+            {!autoSaving && savedCampaignId && <Typography variant="caption" color="success.main" alignSelf="center">✅ Auto-saved</Typography>}
+          </Stack>
+        )}
+
+        {/* Step 4 — Links list with To Send / Sent tabs */}
+        {links.length > 0 && (
+          <Accordion expanded={expanded === 'links'} onChange={handleAccordion('links')}
+            sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Typography fontSize={20}>4️⃣</Typography>
+                <Box>
+                  <Typography fontWeight={700}>Send Links ({links.length})</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    📤 To Send: {links.length - sentSet.size} &nbsp;·&nbsp; ✅ Sent: {sentSet.size}
+                  </Typography>
+                </Box>
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0 }}>
+              <Stack spacing={1.5}>
+                {/* Search */}
+                <TextField size="small" fullWidth placeholder="Search by name or number…"
+                  value={linkSearch} onChange={e => setLinkSearch(e.target.value)}
+                  InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>🔍</Typography> }} />
+                {/* Sub-tabs */}
+                <Stack direction="row" spacing={1}>
+                  <Button size="small"
+                    variant={linkTab === 'tosend' ? 'contained' : 'outlined'}
+                    onClick={() => setLinkTab('tosend')}>
+                    📤 To Send ({links.length - sentSet.size})
+                  </Button>
+                  <Button size="small"
+                    variant={linkTab === 'sent' ? 'contained' : 'outlined'}
+                    color={linkTab === 'sent' ? 'success' : 'inherit'}
+                    onClick={() => setLinkTab('sent')}>
+                    ✅ Sent ({sentSet.size})
+                  </Button>
+                  {sentSet.size > 0 && (
+                    <Button size="small" variant="text" color="warning"
+                      onClick={() => setSentSet(new Set())}>
+                      Reset
+                    </Button>
+                  )}
+                </Stack>
+
+                {/* Recipient cards */}
+                {links
+                  .map((r, idx) => ({ r, idx }))
+                  .filter(({ r, idx }) => {
+                    const tabMatch = linkTab === 'tosend' ? !sentSet.has(idx) : sentSet.has(idx);
+                    const q = linkSearch.trim().toLowerCase();
+                    const searchMatch = !q || r.name.toLowerCase().includes(q) || r.mobile.includes(q);
+                    return tabMatch && searchMatch;
+                  })
+                  .map(({ r, idx }) => (
+                  <Card key={idx} variant="outlined"
+                    sx={{ borderRadius: 2, opacity: sentSet.has(idx) ? 0.75 : 1 }}>
+                    <CardContent sx={{ py: '10px !important', px: 1.5 }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
+                        <Box sx={{ flex: 1 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            {sentSet.has(idx) && <Typography fontSize={14}>✅</Typography>}
+                            <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
+                        </Box>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          {/* Download image */}
+                          {r.imgBlobUrl && (
+                            <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                              onClick={() => downloadImage(r.imgBlobUrl, r.name)}>
+                              Image
+                            </Button>
+                          )}
+                          {/* Share: native JID intent (APK) / Web Share (PWA) / download+wa.me (desktop) */}
+                          {r.imgBlobUrl && (
+                            <Button size="small" variant="contained" color="secondary"
+                              onClick={async () => {
+                                setSentSet(prev => new Set([...prev, idx]));
+                                await shareWhatsApp({ phone: r.mobile, message: r.personalMsg, blobUrl: r.imgBlobUrl, name: r.name });
+                              }}>
+                              📤 Share
+                            </Button>
+                          )}
+                          {/* Send WhatsApp wa.me */}
+                          <Button size="small" variant="contained" color="success"
+                            onClick={() => { setSentSet(prev => new Set([...prev, idx])); openExternalUrl(r.waUrl); }}>
+                            📱 Send WA
+                          </Button>
+                          {/* Toggle sent/unsent */}
+                          {sentSet.has(idx) ? (
+                            <Button size="small" variant="text" color="warning"
+                              onClick={() => setSentSet(prev => { const s = new Set(prev); s.delete(idx); return s; })}>
+                              Undo
+                            </Button>
+                          ) : (
+                            <Button size="small" variant="text" color="success"
+                              onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
+                              Mark Sent
+                            </Button>
+                          )}
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                ))}
+
+                {links.filter((_, i) => linkTab === 'tosend' ? !sentSet.has(i) : sentSet.has(i)).length === 0 && (
+                  <Typography color="text.secondary" textAlign="center" py={1.5} variant="body2">
+                    {linkTab === 'tosend' ? '🎉 All links sent!' : 'No sent links yet — tap Send WA to mark as sent.'}
+                  </Typography>
+                )}
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+        )}
+
+      </Stack>
+    </PageSurface>
+  );
+}
+
+// ── Manual Campaigns Panel (saved wa.me link campaigns) ───────────────────────
+
+function ManualCampaignsPanel() {
+  const [campaigns,   setCampaigns]  = useState([]);
+  const [loading,     setLoading]    = useState(true);
+  const [selected,    setSelected]   = useState(null);
+  const [imgCache,    setImgCache]   = useState({});
+  const [sentSet,     setSentSet]    = useState(new Set());
+  const [linkTab,     setLinkTab]    = useState('tosend');
+  const [linkSearch,  setLinkSearch] = useState('');
+  const [newName,       setNewName]      = useState('');
+  const [newMobile,     setNewMobile]    = useState('');
+  const [adding,        setAdding]       = useState(false);
+  const [addOpen,       setAddOpen]      = useState(false);
+  const [editMsgOpen,   setEditMsgOpen]  = useState(false);
+  const [editMsg,       setEditMsg]      = useState('');
+  const [editImgOpen,   setEditImgOpen]  = useState(false);
+  const [editImgUrl,    setEditImgUrl]   = useState('');
+  const [editFontStyle, setEditFontStyle] = useState(emptyFontStyle);
+  const [editImgLoaded, setEditImgLoaded] = useState(false);
+  const [editImgEl,     setEditImgEl]    = useState(null);
+  const [editCanvasH,   setEditCanvasH]  = useState(400);
+  const editCanvasRef   = useRef(null);
+  const editIsDragging  = useRef(false);
+  const [uploadingEditImg, setUploadingEditImg] = useState(false);
+  const [savingEdit,    setSavingEdit]   = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await whatsappService.listCampaigns();
+      const all = Array.isArray(r.data) ? r.data : [];
+      setCampaigns(all.filter(c => c.type === 'MANUAL'));
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this saved campaign?')) return;
+    await whatsappService.deleteCampaign(id).catch(() => null);
+    load();
+  };
+
+  // Re-generate personalised image blob for a recipient (uses saved imageUrl + fontStyle)
+  const getImg = useCallback(async (campaign, recipientName) => {
+    const cacheKey = `${campaign._id}__${recipientName}`;
+    if (imgCache[cacheKey]) return imgCache[cacheKey];
+    if (!campaign.imageUrl) return null;
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const off = document.createElement('canvas');
+        off.width  = 1200;
+        off.height = Math.round(1200 * (img.naturalHeight / img.naturalWidth)) || 800;
+        drawNameOnCanvas(off, img, recipientName, campaign.fontStyle || emptyFontStyle);
+        off.toBlob((blob) => {
+          const url = blob ? URL.createObjectURL(blob) : null;
+          setImgCache(prev => ({ ...prev, [cacheKey]: url }));
+          resolve(url);
+        }, 'image/png');
+      };
+      img.onerror = () => resolve(null);
+      img.src = campaign.imageUrl;
+    });
+  }, [imgCache]);
+
+  const downloadImg = async (campaign, name) => {
+    const url = await getImg(campaign, name);
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url; a.download = `invite_${name.replace(/\s+/g,'_')}.png`; a.click();
+  };
+
+  const addRecipient = async () => {
+    if (!newName.trim() || !newMobile.trim()) return;
+    setAdding(true);
+    try {
+      const d = newMobile.replace(/[^\d]/g, '').trim();
+      const mobile = d.length === 10 ? '91' + d : d;
+      const personalMsg = (selected.message || '').replace(/\{name\}/gi, newName.trim());
+      const waUrl = `https://wa.me/${mobile}?text=${encodeURIComponent(personalMsg)}`;
+      const newRec = { name: newName.trim(), mobile, waUrl };
+      const updatedRecipients = [...(selected.recipients || []), newRec];
+      const res = await whatsappService.updateCampaign(selected._id, { recipients: updatedRecipients });
+      const updated = res.data;
+      setSelected(updated);
+      setCampaigns(prev => prev.map(c => c._id === updated._id ? updated : c));
+      setNewName('');
+      setNewMobile('');
+      setAddOpen(false);
+    } catch (e) {
+      alert('Failed to add recipient: ' + (e?.response?.data?.message || e.message));
+    } finally { setAdding(false); }
+  };
+
+  // Regenerate all wa.me links when message changes
+  const saveEditedMessage = async () => {
+    setSavingEdit(true);
+    try {
+      const updatedRecipients = (selected.recipients || []).map(r => {
+        const personalMsg = editMsg.replace(/\{name\}/gi, r.name);
+        return { ...r, waUrl: `https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}` };
+      });
+      const res = await whatsappService.updateCampaign(selected._id, { message: editMsg, recipients: updatedRecipients });
+      setSelected(res.data);
+      setCampaigns(prev => prev.map(c => c._id === res.data._id ? res.data : c));
+      setEditMsgOpen(false);
+    } catch (e) { alert('Save failed'); }
+    finally { setSavingEdit(false); }
+  };
+
+  // Save edited image + fontStyle
+  const saveEditedImage = async () => {
+    setSavingEdit(true);
+    try {
+      const res = await whatsappService.updateCampaign(selected._id, { imageUrl: editImgUrl, fontStyle: editFontStyle });
+      setSelected(res.data);
+      setCampaigns(prev => prev.map(c => c._id === res.data._id ? res.data : c));
+      setImgCache({});  // clear cached blobs so new image is used
+      setEditImgOpen(false);
+    } catch (e) { alert('Save failed'); }
+    finally { setSavingEdit(false); }
+  };
+
+  // Canvas drag for edit image popup
+  const editGetFrac = (e) => {
+    const c = editCanvasRef.current; if (!c) return null;
+    const r = c.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: Math.min(1, Math.max(0, (cx - r.left) / r.width)), y: Math.min(1, Math.max(0, (cy - r.top) / r.height)) };
+  };
+  const editDragStart = (e) => { e.preventDefault(); editIsDragging.current = true; const p = editGetFrac(e); if (p) setEditFontStyle(f => ({ ...f, ...p })); };
+  const editDragMove  = (e) => { if (!editIsDragging.current) return; e.preventDefault(); const p = editGetFrac(e); if (p) setEditFontStyle(f => ({ ...f, ...p })); };
+  const editDragEnd   = () => { editIsDragging.current = false; };
+
+  // Redraw edit canvas
+  useEffect(() => {
+    if (!editImgLoaded || !editCanvasRef.current || !editImgEl) return;
+    const previewName = selected?.recipients?.[0]?.name || 'Guest';
+    drawNameOnCanvas(editCanvasRef.current, editImgEl, previewName, editFontStyle);
+  }, [editImgLoaded, editFontStyle, editImgEl, selected]);
+
+  const shareImg = async (campaign, r) => {
+    const url = await getImg(campaign, r.name);
+    if (!url) return;
+    const personalMsg = (campaign.message || '').replace(/\{name\}/gi, r.name);
+    await shareWhatsApp({ phone: r.mobile, message: personalMsg, blobUrl: url, name: r.name });
+  };
+
+  // ── Detail view ──────────────────────────────────────────────────────────────
+  if (selected) {
+    const recs = selected.recipients || [];
+    return (
+      <PageSurface sx={{ pb: { xs: 12, sm: 5 }, position: 'relative' }}>
+        <Stack spacing={2}>
+          {/* Header */}
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+              <Box>
+                <Typography variant="h6" fontWeight={800}>{selected.title}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {recs.length} recipients · saved {new Date(selected.createdAt).toLocaleString()}
+                </Typography>
+              </Box>
+              <Button size="small" variant="outlined" onClick={() => { setSelected(null); setSentSet(new Set()); setLinkTab('tosend'); }}>← Back</Button>
+            </Stack>
+          </CardContent></Card>
+
+          {/* Message with edit icon */}
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography fontWeight={700}>Message</Typography>
+              <IconButton size="small" onClick={() => { setEditMsg(selected.message || ''); setEditMsgOpen(true); }}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              {selected.message || '(no message)'}
+            </Typography>
+          </CardContent></Card>
+
+          {/* Image with edit / delete icons */}
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography fontWeight={700}>Invitation Image</Typography>
+              <Stack direction="row" spacing={0.5}>
+                <IconButton size="small" onClick={() => {
+                  setEditImgUrl(selected.imageUrl || '');
+                  setEditFontStyle(selected.fontStyle || emptyFontStyle);
+                  setEditImgLoaded(false); setEditImgEl(null);
+                  setEditImgOpen(true);
+                }}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                {selected.imageUrl && (
+                  <IconButton size="small" color="error" onClick={async () => {
+                    if (!window.confirm('Remove image from this campaign?')) return;
+                    const res = await whatsappService.updateCampaign(selected._id, { imageUrl: '' });
+                    setSelected(res.data);
+                    setCampaigns(prev => prev.map(c => c._id === res.data._id ? res.data : c));
+                    setImgCache({});
+                  }}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
+            </Stack>
+            {selected.imageUrl
+              ? <Box component="img" src={selected.imageUrl} alt="base"
+                  sx={{ width: '100%', maxWidth: 320, borderRadius: 1, objectFit: 'contain' }} />
+              : <Typography variant="body2" color="text.secondary">No image — tap ✏️ to add one</Typography>
+            }
+          </CardContent></Card>
+
+          {/* Recipients list */}
+          <Card><CardContent>
+            <Typography fontWeight={700} sx={{ mb: 1.5 }}>
+              Recipients ({recs.length}) — 📤 To Send: {recs.length - sentSet.size} · ✅ Sent: {sentSet.size}
+            </Typography>
+            <TextField size="small" fullWidth placeholder="Search by name or number…"
+              value={linkSearch} onChange={e => setLinkSearch(e.target.value)} sx={{ mb: 1 }}
+              InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>🔍</Typography> }} />
+            <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+              <Button size="small" variant={linkTab === 'tosend' ? 'contained' : 'outlined'}
+                onClick={() => setLinkTab('tosend')}>📤 To Send ({recs.length - sentSet.size})</Button>
+              <Button size="small" variant={linkTab === 'sent' ? 'contained' : 'outlined'}
+                color={linkTab === 'sent' ? 'success' : 'inherit'}
+                onClick={() => setLinkTab('sent')}>✅ Sent ({sentSet.size})</Button>
+              {sentSet.size > 0 && <Button size="small" variant="text" color="warning" onClick={() => setSentSet(new Set())}>Reset</Button>}
+            </Stack>
+            <Stack spacing={1}>
+              {recs.filter((_, i) => linkTab === 'tosend' ? !sentSet.has(i) : sentSet.has(i)).length === 0 && (
+                <Typography color="text.secondary" textAlign="center" py={1.5} variant="body2">
+                  {linkTab === 'tosend' ? '🎉 All sent!' : 'No sent links yet.'}
+                </Typography>
+              )}
+              {recs.map((r, idx) => {
+                if (linkTab === 'tosend' ? sentSet.has(idx) : !sentSet.has(idx)) return null;
+                const q = linkSearch.trim().toLowerCase();
+                if (q && !r.name.toLowerCase().includes(q) && !r.mobile.includes(q)) return null;
+                return (
+                  <Card key={idx} variant="outlined" sx={{ borderRadius: 2, opacity: sentSet.has(idx) ? 0.75 : 1 }}>
+                    <CardContent sx={{ py: '10px !important', px: 1.5 }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
+                        <Box sx={{ flex: 1 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            {sentSet.has(idx) && <Typography fontSize={14}>✅</Typography>}
+                            <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
+                        </Box>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          {selected.imageUrl && (
+                            <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                              onClick={() => downloadImg(selected, r.name)}>Image</Button>
+                          )}
+                          {selected.imageUrl && (
+                            <Button size="small" variant="contained" color="secondary"
+                              onClick={() => shareImg(selected, r)}>📤 Share</Button>
+                          )}
+                          {r.waUrl
+                            ? <Button size="small" variant="contained" color="success"
+                                onClick={() => { setSentSet(prev => new Set([...prev, idx])); openExternalUrl(r.waUrl); }}>
+                                📱 Send WA
+                              </Button>
+                            : <Typography variant="caption" color="text.secondary">No link</Typography>}
+                          {sentSet.has(idx)
+                            ? <Button size="small" variant="text" color="warning"
+                                onClick={() => setSentSet(prev => { const s = new Set(prev); s.delete(idx); return s; })}>Undo</Button>
+                            : <Button size="small" variant="text" color="success"
+                                onClick={() => setSentSet(prev => new Set([...prev, idx]))}>Mark Sent</Button>}
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Stack>
+          </CardContent></Card>
+        </Stack>
+
+        {/* FAB — Add recipient (WhatsApp style) — rendered in Portal so it escapes any overflow/transform parent */}
+        <Portal>
+          <Fab color="success" size="medium"
+            sx={{ position: 'fixed', bottom: { xs: 80, sm: 32 }, right: { xs: 16, sm: 32 }, zIndex: 1300 }}
+            onClick={() => { setNewName(''); setNewMobile(''); setAddOpen(true); }}>
+            <AddIcon />
+          </Fab>
+        </Portal>
+
+        {/* Add Recipient Dialog */}
+        <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>➕ Add Recipient</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <TextField autoFocus label="Name" value={newName} onChange={e => setNewName(e.target.value)} fullWidth />
+              <TextField label="Mobile (10 or 12 digit)" value={newMobile}
+                onChange={e => setNewMobile(e.target.value)} fullWidth
+                onKeyDown={e => e.key === 'Enter' && addRecipient()} />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={addRecipient}
+              disabled={adding || !newName.trim() || !newMobile.trim()}
+              startIcon={adding ? <CircularProgress size={14} color="inherit" /> : null}>
+              {adding ? 'Adding…' : 'Add'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Edit Message Dialog */}
+        <Dialog open={editMsgOpen} onClose={() => setEditMsgOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>✏️ Edit Message</DialogTitle>
+          <DialogContent>
+            <TextField autoFocus fullWidth multiline minRows={5} label="Message"
+              value={editMsg} onChange={e => setEditMsg(e.target.value)} sx={{ mt: 1 }}
+              helperText="{name} is replaced per recipient. Saving updates all wa.me links." />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditMsgOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={saveEditedMessage}
+              disabled={savingEdit}
+              startIcon={savingEdit ? <CircularProgress size={14} color="inherit" /> : null}>
+              {savingEdit ? 'Saving…' : 'Save & Regenerate Links'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Edit Image Dialog */}
+        <Dialog open={editImgOpen} onClose={() => setEditImgOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>✏️ Edit Image & Name Position</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Stack direction="row" spacing={1}>
+                <TextField fullWidth size="small" label="Image URL" value={editImgUrl}
+                  onChange={e => {
+                    setEditImgUrl(e.target.value);
+                    setEditImgLoaded(false); setEditImgEl(null);
+                    if (!e.target.value) return;
+                    const img = new window.Image(); img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                      const h = Math.round(600 * img.naturalHeight / img.naturalWidth) || 400;
+                      setEditCanvasH(Math.max(200, Math.min(h, 700)));
+                      setEditImgEl(img); setEditImgLoaded(true);
+                    };
+                    img.src = e.target.value;
+                  }} />
+                <Button component="label" variant="outlined" sx={{ whiteSpace: 'nowrap' }}
+                  startIcon={uploadingEditImg ? <CircularProgress size={16} /> : <UploadFileIcon />}
+                  disabled={uploadingEditImg}>
+                  {uploadingEditImg ? '…' : 'Upload'}
+                  <input hidden accept="image/*" type="file" onChange={async (e) => {
+                    const file = e.target.files?.[0]; if (!file) return;
+                    setUploadingEditImg(true);
+                    try {
+                      const { default: api } = await import('../api');
+                      const fd = new FormData(); fd.append('file', file); fd.append('folder', 'bk_award_invites');
+                      const res = await api.post('/uploads/public', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                      const url = res?.data?.url || '';
+                      setEditImgUrl(url);
+                      const img = new window.Image(); img.crossOrigin = 'anonymous';
+                      img.onload = () => {
+                        const h = Math.round(600 * img.naturalHeight / img.naturalWidth) || 400;
+                        setEditCanvasH(Math.max(200, Math.min(h, 700)));
+                        setEditImgEl(img); setEditImgLoaded(true);
+                      };
+                      img.src = url;
+                    } finally { setUploadingEditImg(false); }
+                  }} />
+                </Button>
+              </Stack>
+              {editImgLoaded && editImgEl && (
+                <>
+                  <Typography variant="caption" color="text.secondary">✋ Drag to reposition name</Typography>
+                  <Box sx={{ border: '2px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: '#111', cursor: 'crosshair', userSelect: 'none', touchAction: 'none' }}
+                    onMouseDown={editDragStart} onMouseMove={editDragMove} onMouseUp={editDragEnd} onMouseLeave={editDragEnd}
+                    onTouchStart={editDragStart} onTouchMove={editDragMove} onTouchEnd={editDragEnd}>
+                    <canvas ref={editCanvasRef} width={600} height={editCanvasH} style={{ display: 'block', width: '100%', height: 'auto' }} />
+                  </Box>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <TextField select size="small" label="Font" value={editFontStyle.fontFamily} sx={{ minWidth: 130 }}
+                      onChange={e => setEditFontStyle(f => ({ ...f, fontFamily: e.target.value }))}>
+                      {FONT_FAMILIES.map(ff => <MenuItem key={ff.value} value={ff.value}>{ff.label}</MenuItem>)}
+                    </TextField>
+                    <TextField size="small" type="number" label="Size" value={editFontStyle.fontSize} sx={{ width: 80 }}
+                      inputProps={{ min: 10, max: 200 }}
+                      onChange={e => setEditFontStyle(f => ({ ...f, fontSize: Number(e.target.value) }))} />
+                    <Stack spacing={0.25} justifyContent="center">
+                      <Typography variant="caption" color="text.secondary">Color</Typography>
+                      <input type="color" value={editFontStyle.color}
+                        onChange={e => setEditFontStyle(f => ({ ...f, color: e.target.value }))}
+                        style={{ width: 44, height: 36, border: 'none', cursor: 'pointer', borderRadius: 4 }} />
+                    </Stack>
+                    <Button size="small" variant={editFontStyle.fontWeight === 'bold' ? 'contained' : 'outlined'}
+                      onClick={() => setEditFontStyle(f => ({ ...f, fontWeight: f.fontWeight === 'bold' ? 'normal' : 'bold' }))}><strong>B</strong></Button>
+                    <Button size="small" variant={editFontStyle.shadow ? 'contained' : 'outlined'}
+                      onClick={() => setEditFontStyle(f => ({ ...f, shadow: !f.shadow }))}>Shadow</Button>
+                  </Stack>
+                </>
+              )}
+              {!editImgUrl && (
+                <Typography variant="body2" color="text.secondary">Enter URL or upload an image above to preview</Typography>
+              )}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditImgOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={saveEditedImage} disabled={savingEdit}
+              startIcon={savingEdit ? <CircularProgress size={14} color="inherit" /> : null}>
+              {savingEdit ? 'Saving…' : 'Save Image'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+      </PageSurface>
+    );
+  }
+
+  // ── List view ────────────────────────────────────────────────────────────────
+  return (
+    <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
+      <Stack spacing={2}>
+        <Card><CardContent sx={{ py: '10px !important', px: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>📱 Saved Manual Campaigns</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Campaigns saved from the Manual tab — wa.me links ready to reuse
+              </Typography>
+            </Box>
+            <Button size="small" variant="outlined" onClick={load} disabled={loading}>Refresh</Button>
+          </Stack>
+        </CardContent></Card>
+
+        {loading && <LinearProgress />}
+
+        {!loading && campaigns.length === 0 && (
+          <Card><CardContent>
+            <Typography color="text.secondary" textAlign="center" py={2}>
+              No saved manual campaigns yet. Go to <strong>📱 Manual</strong> tab, upload Excel &amp; generate links — they auto-save here.
+            </Typography>
+          </CardContent></Card>
+        )}
+
+        {campaigns.map(c => (
+          <Card key={c._id} variant="outlined" sx={{ borderRadius: 2 }}>
+            <CardContent sx={{ py: '12px !important', px: 2 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+                <Box sx={{ flex: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                    <Typography fontWeight={700}>{c.title || 'Untitled'}</Typography>
+                    <Chip label={`${c.recipients?.length || 0} recipients`} size="small" variant="outlined" />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    Saved {new Date(c.createdAt).toLocaleString()}
+                  </Typography>
+                  {c.message && (
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                      💬 {c.message.slice(0, 60)}{c.message.length > 60 ? '…' : ''}
+                    </Typography>
+                  )}
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Button size="small" variant="contained" onClick={() => setSelected(c)}>Open Links</Button>
+                  <Button size="small" variant="outlined" color="error" onClick={() => handleDelete(c._id)}>Delete</Button>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        ))}
+      </Stack>
+    </PageSurface>
+  );
+}
+
+// ── Campaigns Panel ───────────────────────────────────────────────────────────
+
+function CampaignsPanel() {
+  const [campaigns, setCampaigns]   = useState([]);
+  const [loading,   setLoading]     = useState(true);
+  const [selected,  setSelected]    = useState(null);  // detail view
+  const [saving,    setSaving]      = useState(false);
+  const [sending,   setSending]     = useState('');    // campaign id being sent
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await whatsappService.listCampaigns();
+      setCampaigns(Array.isArray(r.data) ? r.data : []);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Poll every 30s so status updates (SENDING→SENT) reflect live
+  useEffect(() => {
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this campaign?')) return;
+    await whatsappService.deleteCampaign(id).catch(() => null);
+    load();
+  };
+
+  const handleSendNow = async (id) => {
+    setSending(id);
+    try {
+      await whatsappService.sendCampaignNow(id);
+      load();
+    } catch (e) {
+      alert(e?.response?.data?.message || 'Send failed');
+    } finally { setSending(''); }
+  };
+
+  const handleCancel = async (id) => {
+    await whatsappService.updateCampaign(id, { status: 'CANCELLED' }).catch(() => null);
+    load();
+  };
+
+  const statusColor = (s) =>
+    s === 'SENT'      ? 'success' :
+    s === 'SENDING'   ? 'warning' :
+    s === 'SCHEDULED' ? 'primary' :
+    s === 'CANCELLED' ? 'error'   : 'default';
+
+  // ── Detail view ─────────────────────────────────────────────────────────────
+  if (selected) {
+    const r = selected.recipients || [];
+    const sent   = r.filter(x => x.status === 'SENT').length;
+    const failed = r.filter(x => x.status === 'FAILED').length;
+    const pending = r.filter(x => x.status === 'PENDING').length;
+    return (
+      <PageSurface>
+        <Stack spacing={2}>
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+              <Box>
+                <Typography variant="h6" fontWeight={800}>{selected.title}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selected.type} · {selected.status} · {new Date(selected.createdAt).toLocaleString()}
+                </Typography>
+                {selected.scheduledAt && (
+                  <Typography variant="body2" color="primary.main">
+                    🗓 Scheduled: {new Date(selected.scheduledAt).toLocaleString()}
+                  </Typography>
+                )}
+              </Box>
+              <Button size="small" variant="outlined" onClick={() => setSelected(null)}>← Back</Button>
+            </Stack>
+          </CardContent></Card>
+
+          <Grid container spacing={2}>
+            {[['Total', r.length, 'text.primary'], ['Sent', sent, 'success.main'], ['Failed', failed, 'error.main'], ['Pending', pending, 'text.secondary']].map(([label, val, color]) => (
+              <Grid key={label} size={{ xs: 6, md: 3 }}>
+                <Card><CardContent sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" fontWeight={800} color={color}>{val}</Typography>
+                  <Typography variant="body2" color="text.secondary">{label}</Typography>
+                </CardContent></Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: selected.imageUrl ? 7 : 12 }}>
+              <Card><CardContent>
+                <Typography fontWeight={700} sx={{ mb: 1 }}>Message</Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                  {selected.message || '(no message)'}
+                </Typography>
+              </CardContent></Card>
+            </Grid>
+            {selected.imageUrl && (
+              <Grid size={{ xs: 12, md: 5 }}>
+                <Card><CardContent>
+                  <Typography fontWeight={700} sx={{ mb: 1 }}>Image</Typography>
+                  <Box component="img" src={selected.imageUrl} alt="Campaign image"
+                    sx={{ width: '100%', borderRadius: 1, objectFit: 'contain', maxHeight: 300 }} />
+                </CardContent></Card>
+              </Grid>
+            )}
+          </Grid>
+
+          {r.length > 0 && (
+            <Card><CardContent>
+              <Typography fontWeight={700} sx={{ mb: 1.5 }}>Recipients ({r.length})</Typography>
+              <Box sx={{ maxHeight: 360, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                {r.map((rec, idx) => (
+                  <Stack key={idx} direction="row" alignItems="center" spacing={1.5}
+                    sx={{ px: 1.5, py: 0.75, borderBottom: idx < r.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ minWidth: 24 }}>{idx + 1}</Typography>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>{rec.name || '-'}</Typography>
+                      <Typography variant="caption" color="text.secondary">{rec.mobile}</Typography>
+                    </Box>
+                    <Chip size="small"
+                      label={rec.status === 'SENT' ? '✅ Sent' : rec.status === 'FAILED' ? '❌ Failed' : '⏳ Pending'}
+                      color={rec.status === 'SENT' ? 'success' : rec.status === 'FAILED' ? 'error' : 'default'} />
+                  </Stack>
+                ))}
+              </Box>
+            </CardContent></Card>
+          )}
+        </Stack>
+      </PageSurface>
+    );
+  }
+
+  // ── List view ────────────────────────────────────────────────────────────────
+  return (
+    <PageSurface>
+      <Stack spacing={2}>
+        <Card><CardContent sx={{ py: '10px !important', px: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>🗓 Campaigns</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Save &amp; schedule invitation campaigns · auto-send via Baileys at scheduled time
+              </Typography>
+            </Box>
+            <Button size="small" variant="outlined" onClick={load} disabled={loading}>Refresh</Button>
+          </Stack>
+        </CardContent></Card>
+
+        {loading && <LinearProgress />}
+
+        {!loading && campaigns.length === 0 && (
+          <Card><CardContent>
+            <Typography color="text.secondary" textAlign="center" py={2}>
+              No campaigns yet. Use <strong>Save Campaign</strong> in the Invitation or Manual tab to create one.
+            </Typography>
+          </CardContent></Card>
+        )}
+
+        {campaigns.map(c => (
+          <Card key={c._id} variant="outlined" sx={{ borderRadius: 2 }}>
+            <CardContent sx={{ py: '12px !important', px: 2 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+                <Box sx={{ flex: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                    <Typography fontWeight={700}>{c.title || 'Untitled'}</Typography>
+                    <Chip label={c.status} size="small" color={statusColor(c.status)} />
+                    <Chip label={c.type} size="small" variant="outlined" />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    {c.recipients?.length || 0} recipients
+                    {c.scheduledAt ? ` · 🗓 ${new Date(c.scheduledAt).toLocaleString()}` : ''}
+                    {c.sentCount > 0 ? ` · ✅ ${c.sentCount} sent` : ''}
+                    {c.failedCount > 0 ? ` · ❌ ${c.failedCount} failed` : ''}
+                  </Typography>
+                  {c.message && (
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                      💬 {c.message.slice(0, 60)}{c.message.length > 60 ? '…' : ''}
+                    </Typography>
+                  )}
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Button size="small" variant="outlined" onClick={() => setSelected(c)}>Report</Button>
+                  {['DRAFT','SCHEDULED'].includes(c.status) && (
+                    <Button size="small" variant="contained" color="success"
+                      disabled={sending === c._id}
+                      startIcon={sending === c._id ? <CircularProgress size={14} color="inherit" /> : null}
+                      onClick={() => handleSendNow(c._id)}>
+                      Send Now
+                    </Button>
+                  )}
+                  {c.status === 'SCHEDULED' && (
+                    <Button size="small" variant="outlined" color="warning" onClick={() => handleCancel(c._id)}>Cancel</Button>
+                  )}
+                  {['SENT','CANCELLED'].includes(c.status) && (
+                    <Button size="small" variant="outlined" color="error" onClick={() => handleDelete(c._id)}>Delete</Button>
+                  )}
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        ))}
       </Stack>
     </PageSurface>
   );

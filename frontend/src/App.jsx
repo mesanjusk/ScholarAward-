@@ -28,6 +28,7 @@ import AnchorsPage from './pages/AnchorsPage';
 import PublicPhotoTemplatePage from './pages/PublicPhotoTemplatePage';
 import TemplateConfigPage from './pages/TemplateConfigPage';
 import PublicInvitationPage from './pages/PublicInvitationPage';
+import AgendaPage from './pages/AgendaPage';
 
 // Set to true to open registrations, false to show the "Registration Closed" page
 const STUDENT_REGISTRATION_OPEN = false;
@@ -52,6 +53,7 @@ const protectedPages = [
   ['/whatsapp',             <WhatsAppPage />,           MODULE_PERMISSIONS.whatsapp],
   ['/super-admin/settings', <SuperAdminSettingsPage />, MODULE_PERMISSIONS.superAdminSettings],
   ['/template-config',      <TemplateConfigPage />,      MODULE_PERMISSIONS.templateConfig],
+  ['/agenda',               <AgendaPage />,              MODULE_PERMISSIONS.agenda],
 ];
 
 export default function App() {

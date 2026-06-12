@@ -24,6 +24,7 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import Groups3Icon from '@mui/icons-material/Groups3';
 import AddIcon from '@mui/icons-material/Add';
 import TuneIcon from '@mui/icons-material/Tune';
+import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered';
 import { useAuth } from '../context/AuthContext';
 import { useLive } from '../context/LiveContext';
 import useOnlineStatus from '../hooks/useOnlineStatus';
@@ -46,6 +47,7 @@ const navIcons = {
   '/admin':                <AdminPanelSettingsIcon />,
   '/whatsapp':             <ChatIcon />,
   '/super-admin/settings': <TuneIcon />,
+  '/agenda':               <FormatListNumberedIcon />,
 };
 
 const liveModePaths = ['/stage', '/notifications', '/whatsapp'];
