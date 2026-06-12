@@ -35,7 +35,10 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://bkfrontend.vercel.app',
-  'https://bkawards.instify.in'
+  'https://bkawards.instify.in',
+  'capacitor://localhost',
+  'http://localhost',
+  'https://localhost',
 ];
 
 app.use(
