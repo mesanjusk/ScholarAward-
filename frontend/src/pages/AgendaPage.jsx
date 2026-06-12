@@ -26,7 +26,8 @@ import { useAuth } from '../context/AuthContext';
 
 const API = (import.meta.env.VITE_API_URL || 'https://bkbackend-zr8f.onrender.com/api').replace(/\/api$/, '');
 
-function authHeader(token) {
+function authHeader() {
+  const token = localStorage.getItem('token');
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 }
 
@@ -516,7 +517,7 @@ function exportToPDF(categories) {
 
 // ── Main AgendaPage ───────────────────────────────────────────────────────────
 export default function AgendaPage() {
-  const { token } = useAuth();
+  useAuth(); // ensure user is authenticated
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
@@ -535,7 +536,7 @@ export default function AgendaPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/agenda`, { headers: authHeader(token) });
+      const res = await fetch(`${API}/api/agenda`, { headers: authHeader() });
       const data = await safeJson(res);
       if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
       setCategories(data);
@@ -552,7 +553,7 @@ export default function AgendaPage() {
     setSeeding(true);
     try {
       const res = await fetch(`${API}/api/agenda/seed`, {
-        method: 'POST', headers: authHeader(token),
+        method: 'POST', headers: authHeader(),
       });
       const data = await safeJson(res);
       if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
@@ -570,7 +571,7 @@ export default function AgendaPage() {
     try {
       const res = await fetch(`${API}/api/agenda`, {
         method: 'POST',
-        headers: authHeader(token),
+        headers: authHeader(),
         body: JSON.stringify({ title: newCatTitle.trim(), order: categories.length + 1, students: [] }),
       });
       const cat = await safeJson(res);
@@ -588,7 +589,7 @@ export default function AgendaPage() {
     try {
       const res = await fetch(`${API}/api/agenda/${updated._id}`, {
         method: 'PATCH',
-        headers: authHeader(token),
+        headers: authHeader(),
         body: JSON.stringify(updated),
       });
       const saved = await safeJson(res);
@@ -605,7 +606,7 @@ export default function AgendaPage() {
     if (!window.confirm(`Delete category "${cat.title}" and all its students?`)) return;
     try {
       await fetch(`${API}/api/agenda/${cat._id}`, {
-        method: 'DELETE', headers: authHeader(token),
+        method: 'DELETE', headers: authHeader(),
       });
       setCategories(prev => prev.filter(c => c._id !== cat._id));
     } catch (e) {
