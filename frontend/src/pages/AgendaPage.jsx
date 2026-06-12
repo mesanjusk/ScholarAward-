@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Component, useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle,
@@ -516,7 +516,7 @@ function exportToPDF(categories) {
 }
 
 // ── Main AgendaPage ───────────────────────────────────────────────────────────
-export default function AgendaPage() {
+function AgendaPage() {
   useAuth(); // ensure user is authenticated
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -688,4 +688,29 @@ export default function AgendaPage() {
       </PageSurface>
     </>
   );
+}
+
+class AgendaErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <Box sx={{ p: 3 }}>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <strong>Agenda page crashed:</strong><br />
+            {this.state.error?.message || String(this.state.error)}
+          </Alert>
+          <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+            {this.state.error?.stack}
+          </pre>
+        </Box>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function AgendaPageWithBoundary() {
+  return <AgendaErrorBoundary><AgendaPage /></AgendaErrorBoundary>;
 }
