@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { shareWhatsApp } from '../plugins/whatsappShare';
+import { shareWhatsApp, openExternalUrl } from '../plugins/whatsappShare';
 import {
   Accordion, AccordionDetails, AccordionSummary,
   Alert, Avatar, Box, Button, Card, CardContent, Checkbox, Chip,
@@ -1845,9 +1845,7 @@ function ManualInvitePanel() {
                           )}
                           {/* Send WhatsApp wa.me */}
                           <Button size="small" variant="contained" color="success"
-                            href={r.waUrl} target="_blank" rel="noopener noreferrer"
-                            component="a"
-                            onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
+                            onClick={() => { setSentSet(prev => new Set([...prev, idx])); openExternalUrl(r.waUrl); }}>
                             📱 Send WA
                           </Button>
                           {/* Toggle sent/unsent */}
@@ -2049,8 +2047,7 @@ function ManualCampaignsPanel() {
                           )}
                           {r.waUrl ? (
                             <Button size="small" variant="contained" color="success"
-                              href={r.waUrl} target="_blank" rel="noopener noreferrer" component="a"
-                              onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
+                              onClick={() => { setSentSet(prev => new Set([...prev, idx])); openExternalUrl(r.waUrl); }}>
                               📱 Send WA
                             </Button>
                           ) : (

@@ -4,8 +4,9 @@ export interface WhatsAppSharePlugin {
   sendToContact(options: {
     phone: string;
     message: string;
-    imagePath?: string;
+    imageBase64?: string;
   }): Promise<void>;
+  openUrl(options: { url: string }): Promise<void>;
 }
 
 const WhatsAppShare = registerPlugin<WhatsAppSharePlugin>('WhatsAppShare');

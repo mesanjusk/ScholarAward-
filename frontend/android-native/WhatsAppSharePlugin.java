@@ -8,20 +8,16 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
+import java.io.FileOutputStream;
 
 @CapacitorPlugin(name = "WhatsAppShare")
 public class WhatsAppSharePlugin extends Plugin {
 
     @PluginMethod
     public void sendToContact(PluginCall call) {
-        String phone  = call.getString("phone",   "");
-        String message = call.getString("message", "");
-        String imagePath = call.getString("imagePath", null);
-
-        // Remove file:// prefix if present
-        if (imagePath != null && imagePath.startsWith("file://")) {
-            imagePath = imagePath.substring(7);
-        }
+        String phone      = call.getString("phone",       "");
+        String message    = call.getString("message",     "");
+        String imageBase64 = call.getString("imageBase64", null);
 
         String jid = phone + "@s.whatsapp.net";
 
@@ -30,9 +26,15 @@ public class WhatsAppSharePlugin extends Plugin {
         intent.putExtra("jid", jid);
         intent.putExtra(Intent.EXTRA_TEXT, message);
 
-        if (imagePath != null && !imagePath.isEmpty()) {
-            File imageFile = new File(imagePath);
-            if (imageFile.exists()) {
+        if (imageBase64 != null && !imageBase64.isEmpty()) {
+            try {
+                byte[] imageBytes = android.util.Base64.decode(imageBase64, android.util.Base64.DEFAULT);
+                File cacheDir = getContext().getCacheDir();
+                File imageFile = new File(cacheDir, "wa_invite_" + System.currentTimeMillis() + ".png");
+                FileOutputStream fos = new FileOutputStream(imageFile);
+                fos.write(imageBytes);
+                fos.close();
+
                 Uri imageUri = FileProvider.getUriForFile(
                     getContext(),
                     getContext().getPackageName() + ".fileprovider",
@@ -41,7 +43,7 @@ public class WhatsAppSharePlugin extends Plugin {
                 intent.setType("image/*");
                 intent.putExtra(Intent.EXTRA_STREAM, imageUri);
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            } else {
+            } catch (Exception e) {
                 intent.setType("text/plain");
             }
         } else {
@@ -52,7 +54,19 @@ public class WhatsAppSharePlugin extends Plugin {
             getActivity().startActivity(intent);
             call.resolve();
         } catch (Exception e) {
-            call.reject("WhatsApp not installed or error: " + e.getMessage());
+            call.reject("WhatsApp not installed: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        String url = call.getString("url", "");
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            getActivity().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Cannot open URL: " + e.getMessage());
         }
     }
 }
