@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Dialog, DialogActions, DialogContent, DialogTitle, Divider,
-  IconButton, LinearProgress, Stack, TextField, Tooltip, Typography,
+  Dialog, DialogActions, DialogContent, DialogTitle,
+  IconButton, LinearProgress, Stack, TextField, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -19,7 +19,7 @@ import {
   useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import PageHeader from '../components/PageHeader';
 import PageSurface from '../components/PageSurface';
 import { useAuth } from '../context/AuthContext';
