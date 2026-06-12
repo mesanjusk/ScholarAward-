@@ -1464,6 +1464,8 @@ function ManualInvitePanel() {
   const [generating,    setGenerating]    = useState(false);
   const [savedCampaignId, setSavedCampaignId] = useState(null);
   const [autoSaving,    setAutoSaving]    = useState(false);
+  const [sentSet,       setSentSet]       = useState(new Set());  // indices marked as sent
+  const [linkTab,       setLinkTab]       = useState('tosend');   // 'tosend' | 'sent'
   const [uploadingImg,  setUploadingImg]  = useState(false);
   const [expanded,      setExpanded]      = useState('excel');
   const [previewIdx,    setPreviewIdx]    = useState(0);
@@ -1758,7 +1760,7 @@ function ManualInvitePanel() {
           </Stack>
         )}
 
-        {/* Step 4 — Links list */}
+        {/* Step 4 — Links list with To Send / Sent tabs */}
         {links.length > 0 && (
           <Accordion expanded={expanded === 'links'} onChange={handleAccordion('links')}
             sx={{ borderRadius: '12px !important', '&:before': { display: 'none' }, boxShadow: 1 }}>
@@ -1767,37 +1769,107 @@ function ManualInvitePanel() {
                 <Typography fontSize={20}>4️⃣</Typography>
                 <Box>
                   <Typography fontWeight={700}>Send Links ({links.length})</Typography>
-                  <Typography variant="caption" color="text.secondary">Tap Send WhatsApp → opens WhatsApp with pre-filled message</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    📤 To Send: {links.length - sentSet.size} &nbsp;·&nbsp; ✅ Sent: {sentSet.size}
+                  </Typography>
                 </Box>
               </Stack>
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0 }}>
-              <Stack spacing={1}>
-                {links.map((r, idx) => (
-                  <Card key={idx} variant="outlined" sx={{ borderRadius: 2 }}>
+              <Stack spacing={1.5}>
+                {/* Sub-tabs */}
+                <Stack direction="row" spacing={1}>
+                  <Button size="small"
+                    variant={linkTab === 'tosend' ? 'contained' : 'outlined'}
+                    onClick={() => setLinkTab('tosend')}>
+                    📤 To Send ({links.length - sentSet.size})
+                  </Button>
+                  <Button size="small"
+                    variant={linkTab === 'sent' ? 'contained' : 'outlined'}
+                    color={linkTab === 'sent' ? 'success' : 'inherit'}
+                    onClick={() => setLinkTab('sent')}>
+                    ✅ Sent ({sentSet.size})
+                  </Button>
+                  {sentSet.size > 0 && (
+                    <Button size="small" variant="text" color="warning"
+                      onClick={() => setSentSet(new Set())}>
+                      Reset
+                    </Button>
+                  )}
+                </Stack>
+
+                {/* Recipient cards */}
+                {links
+                  .map((r, idx) => ({ r, idx }))
+                  .filter(({ idx }) => linkTab === 'tosend' ? !sentSet.has(idx) : sentSet.has(idx))
+                  .map(({ r, idx }) => (
+                  <Card key={idx} variant="outlined"
+                    sx={{ borderRadius: 2, opacity: sentSet.has(idx) ? 0.75 : 1 }}>
                     <CardContent sx={{ py: '10px !important', px: 1.5 }}>
                       <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
                         <Box sx={{ flex: 1 }}>
-                          <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            {sentSet.has(idx) && <Typography fontSize={14}>✅</Typography>}
+                            <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
+                          </Stack>
                           <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
                         </Box>
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          {/* Download image */}
                           {r.imgBlobUrl && (
                             <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
                               onClick={() => downloadImage(r.imgBlobUrl, r.name)}>
                               Image
                             </Button>
                           )}
+                          {/* Web Share API — share image + message together */}
+                          {r.imgBlobUrl && typeof navigator !== 'undefined' && navigator.canShare && (
+                            <Button size="small" variant="outlined" color="secondary"
+                              onClick={async () => {
+                                try {
+                                  const resp = await fetch(r.imgBlobUrl);
+                                  const blob = await resp.blob();
+                                  const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
+                                  if (navigator.canShare({ files: [file] })) {
+                                    await navigator.share({ files: [file], text: r.personalMsg });
+                                  } else {
+                                    downloadImage(r.imgBlobUrl, r.name);
+                                  }
+                                } catch (_) {}
+                              }}>
+                              📤 Share
+                            </Button>
+                          )}
+                          {/* Send WhatsApp wa.me */}
                           <Button size="small" variant="contained" color="success"
                             href={r.waUrl} target="_blank" rel="noopener noreferrer"
-                            component="a">
-                            📱 Send WhatsApp
+                            component="a"
+                            onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
+                            📱 Send WA
                           </Button>
+                          {/* Toggle sent/unsent */}
+                          {sentSet.has(idx) ? (
+                            <Button size="small" variant="text" color="warning"
+                              onClick={() => setSentSet(prev => { const s = new Set(prev); s.delete(idx); return s; })}>
+                              Undo
+                            </Button>
+                          ) : (
+                            <Button size="small" variant="text" color="success"
+                              onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
+                              Mark Sent
+                            </Button>
+                          )}
                         </Stack>
                       </Stack>
                     </CardContent>
                   </Card>
                 ))}
+
+                {links.filter((_, i) => linkTab === 'tosend' ? !sentSet.has(i) : sentSet.has(i)).length === 0 && (
+                  <Typography color="text.secondary" textAlign="center" py={1.5} variant="body2">
+                    {linkTab === 'tosend' ? '🎉 All links sent!' : 'No sent links yet — tap Send WA to mark as sent.'}
+                  </Typography>
+                )}
               </Stack>
             </AccordionDetails>
           </Accordion>
@@ -1814,7 +1886,9 @@ function ManualCampaignsPanel() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [selected,  setSelected]  = useState(null);
-  const [imgCache,  setImgCache]  = useState({});   // name -> blobUrl
+  const [imgCache,  setImgCache]  = useState({});
+  const [sentSet,   setSentSet]   = useState(new Set());
+  const [linkTab,   setLinkTab]   = useState('tosend');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1864,9 +1938,26 @@ function ManualCampaignsPanel() {
     a.href = url; a.download = `invite_${name.replace(/\s+/g,'_')}.png`; a.click();
   };
 
+  const shareImg = async (campaign, r) => {
+    const url = await getImg(campaign, r.name);
+    if (!url) return;
+    try {
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
+      const personalMsg = (campaign.message || '').replace(/\{name\}/gi, r.name);
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text: personalMsg });
+      } else {
+        downloadImg(campaign, r.name);
+      }
+    } catch (_) {}
+  };
+
   // ── Detail view ──────────────────────────────────────────────────────────────
   if (selected) {
     const recs = selected.recipients || [];
+    const filtered = recs.filter((_, i) => linkTab === 'tosend' ? !sentSet.has(i) : sentSet.has(i));
     return (
       <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
         <Stack spacing={2}>
@@ -1878,7 +1969,7 @@ function ManualCampaignsPanel() {
                   {recs.length} recipients · saved {new Date(selected.createdAt).toLocaleString()}
                 </Typography>
               </Box>
-              <Button size="small" variant="outlined" onClick={() => setSelected(null)}>← Back</Button>
+              <Button size="small" variant="outlined" onClick={() => { setSelected(null); setSentSet(new Set()); setLinkTab('tosend'); }}>← Back</Button>
             </Stack>
           </CardContent></Card>
 
@@ -1900,36 +1991,86 @@ function ManualCampaignsPanel() {
           )}
 
           <Card><CardContent>
-            <Typography fontWeight={700} sx={{ mb: 1.5 }}>Recipients & Links ({recs.length})</Typography>
+            <Typography fontWeight={700} sx={{ mb: 1.5 }}>
+              Recipients & Links ({recs.length}) — 📤 To Send: {recs.length - sentSet.size} · ✅ Sent: {sentSet.size}
+            </Typography>
+
+            {/* Sub-tabs */}
+            <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+              <Button size="small" variant={linkTab === 'tosend' ? 'contained' : 'outlined'}
+                onClick={() => setLinkTab('tosend')}>
+                📤 To Send ({recs.length - sentSet.size})
+              </Button>
+              <Button size="small"
+                variant={linkTab === 'sent' ? 'contained' : 'outlined'}
+                color={linkTab === 'sent' ? 'success' : 'inherit'}
+                onClick={() => setLinkTab('sent')}>
+                ✅ Sent ({sentSet.size})
+              </Button>
+              {sentSet.size > 0 && (
+                <Button size="small" variant="text" color="warning" onClick={() => setSentSet(new Set())}>Reset</Button>
+              )}
+            </Stack>
+
             <Stack spacing={1}>
-              {recs.map((r, idx) => (
-                <Card key={idx} variant="outlined" sx={{ borderRadius: 2 }}>
-                  <CardContent sx={{ py: '10px !important', px: 1.5 }}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
-                      </Box>
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {selected.imageUrl && (
-                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
-                            onClick={() => downloadImg(selected, r.name)}>
-                            Image
-                          </Button>
-                        )}
-                        {r.waUrl ? (
-                          <Button size="small" variant="contained" color="success"
-                            href={r.waUrl} target="_blank" rel="noopener noreferrer" component="a">
-                            📱 Send WhatsApp
-                          </Button>
-                        ) : (
-                          <Typography variant="caption" color="text.secondary">No link saved</Typography>
-                        )}
+              {filtered.length === 0 && (
+                <Typography color="text.secondary" textAlign="center" py={1.5} variant="body2">
+                  {linkTab === 'tosend' ? '🎉 All sent!' : 'No sent links yet.'}
+                </Typography>
+              )}
+              {recs.map((r, idx) => {
+                if (linkTab === 'tosend' ? sentSet.has(idx) : !sentSet.has(idx)) return null;
+                const personalMsg = (selected.message || '').replace(/\{name\}/gi, r.name);
+                return (
+                  <Card key={idx} variant="outlined" sx={{ borderRadius: 2, opacity: sentSet.has(idx) ? 0.75 : 1 }}>
+                    <CardContent sx={{ py: '10px !important', px: 1.5 }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1}>
+                        <Box sx={{ flex: 1 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            {sentSet.has(idx) && <Typography fontSize={14}>✅</Typography>}
+                            <Typography variant="body2" fontWeight={700}>{r.name}</Typography>
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">{r.mobile}</Typography>
+                        </Box>
+                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                          {selected.imageUrl && (
+                            <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                              onClick={() => downloadImg(selected, r.name)}>
+                              Image
+                            </Button>
+                          )}
+                          {selected.imageUrl && typeof navigator !== 'undefined' && navigator.canShare && (
+                            <Button size="small" variant="outlined" color="secondary"
+                              onClick={() => shareImg(selected, r)}>
+                              📤 Share
+                            </Button>
+                          )}
+                          {r.waUrl ? (
+                            <Button size="small" variant="contained" color="success"
+                              href={r.waUrl} target="_blank" rel="noopener noreferrer" component="a"
+                              onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
+                              📱 Send WA
+                            </Button>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">No link</Typography>
+                          )}
+                          {sentSet.has(idx) ? (
+                            <Button size="small" variant="text" color="warning"
+                              onClick={() => setSentSet(prev => { const s = new Set(prev); s.delete(idx); return s; })}>
+                              Undo
+                            </Button>
+                          ) : (
+                            <Button size="small" variant="text" color="success"
+                              onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
+                              Mark Sent
+                            </Button>
+                          )}
+                        </Stack>
                       </Stack>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </Stack>
           </CardContent></Card>
         </Stack>
