@@ -24,7 +24,7 @@ import PageHeader from '../components/PageHeader';
 import PageSurface from '../components/PageSurface';
 import { useAuth } from '../context/AuthContext';
 
-const API = import.meta.env.VITE_API_URL || '';
+const API = (import.meta.env.VITE_API_URL || 'https://bkbackend-zr8f.onrender.com/api').replace(/\/api$/, '');
 
 function authHeader(token) {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -526,12 +526,19 @@ export default function AgendaPage() {
   const [newCatTitle, setNewCatTitle] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
 
+  async function safeJson(res) {
+    const text = await res.text();
+    if (!text) throw new Error(`Server returned empty response (status ${res.status})`);
+    try { return JSON.parse(text); } catch { throw new Error(`Server error (status ${res.status}): ${text.slice(0, 120)}`); }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API}/api/agenda`, { headers: authHeader(token) });
-      if (!res.ok) throw new Error('Failed to load');
-      setCategories(await res.json());
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
+      setCategories(data);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -547,7 +554,8 @@ export default function AgendaPage() {
       const res = await fetch(`${API}/api/agenda/seed`, {
         method: 'POST', headers: authHeader(token),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
       await load();
       setError('');
     } catch (e) {
@@ -565,7 +573,8 @@ export default function AgendaPage() {
         headers: authHeader(token),
         body: JSON.stringify({ title: newCatTitle.trim(), order: categories.length + 1, students: [] }),
       });
-      const cat = await res.json();
+      const cat = await safeJson(res);
+      if (!res.ok) throw new Error(cat?.message || `HTTP ${res.status}`);
       setCategories(prev => [...prev, cat]);
       setAddCatOpen(false);
       setNewCatTitle('');
@@ -582,7 +591,8 @@ export default function AgendaPage() {
         headers: authHeader(token),
         body: JSON.stringify(updated),
       });
-      const saved = await res.json();
+      const saved = await safeJson(res);
+      if (!res.ok) throw new Error(saved?.message || `HTTP ${res.status}`);
       setCategories(prev => prev.map(c => c._id === saved._id ? saved : c));
     } catch (e) {
       setError(e.message);
