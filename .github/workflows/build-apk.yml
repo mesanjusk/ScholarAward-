@@ -1,0 +1,93 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Add Capacitor Android platform
+        working-directory: frontend
+        run: npx cap add android
+
+      - name: Copy native plugin & MainActivity
+        run: |
+          DEST=frontend/android/app/src/main/java/com/scholarawards/app
+          mkdir -p "$DEST"
+          cp frontend/android-native/WhatsAppSharePlugin.java "$DEST/"
+          cp frontend/android-native/MainActivity.java "$DEST/"
+
+      - name: Sync Capacitor
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Set gradlew executable
+        working-directory: frontend/android
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: |
+          mv frontend/android/app/build/outputs/apk/debug/app-debug.apk \
+             ScholarAwards-build${{ github.run_number }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-build-${{ github.run_number }}
+          name: "APK Build #${{ github.run_number }}"
+          body: |
+            ## Scholar Awards Android APK
+
+            **Build:** #${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+
+            ### Install Instructions
+            1. Download `ScholarAwards-build${{ github.run_number }}.apk`
+            2. On your Android phone: Settings → Security → **Allow unknown sources** (or install unknown apps for Chrome)
+            3. Open the downloaded APK → Install
+            4. Open **Scholar Awards** app
+
+            ### WhatsApp Share Feature
+            In the **📱 Manual** tab, the **📤 Share** button will now:
+            - Directly open the specific WhatsApp contact
+            - Attach the personalised invitation image
+            - Pre-fill the message
+            - You just tap **Send** in WhatsApp ✅
+          files: ScholarAwards-build${{ github.run_number }}.apk
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

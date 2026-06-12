@@ -1,0 +1,12 @@
+{
+  "appId": "com.scholarawards.app",
+  "appName": "Scholar Awards",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

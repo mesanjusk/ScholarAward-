@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
+import { shareWhatsApp } from '../plugins/whatsappShare';
 import {
   Accordion, AccordionDetails, AccordionSummary,
   Alert, Avatar, Box, Button, Card, CardContent, Checkbox, Chip,
@@ -1832,24 +1833,12 @@ function ManualInvitePanel() {
                               Image
                             </Button>
                           )}
-                          {/* Share: Web Share API (PWA/mobile) or download+wa.me fallback */}
+                          {/* Share: native JID intent (APK) / Web Share (PWA) / download+wa.me (desktop) */}
                           {r.imgBlobUrl && (
                             <Button size="small" variant="contained" color="secondary"
                               onClick={async () => {
                                 setSentSet(prev => new Set([...prev, idx]));
-                                try {
-                                  const resp = await fetch(r.imgBlobUrl);
-                                  const blob = await resp.blob();
-                                  const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
-                                  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                                    // PWA/mobile: native share sheet → pick WhatsApp → image+message together
-                                    await navigator.share({ files: [file], text: r.personalMsg });
-                                    return;
-                                  }
-                                } catch (_) {}
-                                // Desktop fallback: download image + open wa.me
-                                downloadImage(r.imgBlobUrl, r.name);
-                                window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(r.personalMsg)}`, '_blank');
+                                await shareWhatsApp({ phone: r.mobile, message: r.personalMsg, blobUrl: r.imgBlobUrl, name: r.name });
                               }}>
                               📤 Share
                             </Button>
@@ -1957,19 +1946,7 @@ function ManualCampaignsPanel() {
     const url = await getImg(campaign, r.name);
     if (!url) return;
     const personalMsg = (campaign.message || '').replace(/\{name\}/gi, r.name);
-    try {
-      const resp = await fetch(url);
-      const blob = await resp.blob();
-      const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], text: personalMsg });
-        return;
-      }
-    } catch (_) {}
-    // Desktop fallback
-    const a = document.createElement('a');
-    a.href = url; a.download = `invite_${r.name.replace(/\s+/g,'_')}.png`; a.click();
-    window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}`, '_blank');
+    await shareWhatsApp({ phone: r.mobile, message: personalMsg, blobUrl: url, name: r.name });
   };
 
   // ── Detail view ──────────────────────────────────────────────────────────────
