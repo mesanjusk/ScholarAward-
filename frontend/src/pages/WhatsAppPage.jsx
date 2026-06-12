@@ -1464,8 +1464,9 @@ function ManualInvitePanel() {
   const [generating,    setGenerating]    = useState(false);
   const [savedCampaignId, setSavedCampaignId] = useState(null);
   const [autoSaving,    setAutoSaving]    = useState(false);
-  const [sentSet,       setSentSet]       = useState(new Set());  // indices marked as sent
-  const [linkTab,       setLinkTab]       = useState('tosend');   // 'tosend' | 'sent'
+  const [sentSet,       setSentSet]       = useState(new Set());
+  const [linkTab,       setLinkTab]       = useState('tosend');
+  const [linkSearch,    setLinkSearch]    = useState('');
   const [uploadingImg,  setUploadingImg]  = useState(false);
   const [expanded,      setExpanded]      = useState('excel');
   const [previewIdx,    setPreviewIdx]    = useState(0);
@@ -1777,6 +1778,10 @@ function ManualInvitePanel() {
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0 }}>
               <Stack spacing={1.5}>
+                {/* Search */}
+                <TextField size="small" fullWidth placeholder="Search by name or number…"
+                  value={linkSearch} onChange={e => setLinkSearch(e.target.value)}
+                  InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>🔍</Typography> }} />
                 {/* Sub-tabs */}
                 <Stack direction="row" spacing={1}>
                   <Button size="small"
@@ -1801,7 +1806,12 @@ function ManualInvitePanel() {
                 {/* Recipient cards */}
                 {links
                   .map((r, idx) => ({ r, idx }))
-                  .filter(({ idx }) => linkTab === 'tosend' ? !sentSet.has(idx) : sentSet.has(idx))
+                  .filter(({ r, idx }) => {
+                    const tabMatch = linkTab === 'tosend' ? !sentSet.has(idx) : sentSet.has(idx);
+                    const q = linkSearch.trim().toLowerCase();
+                    const searchMatch = !q || r.name.toLowerCase().includes(q) || r.mobile.includes(q);
+                    return tabMatch && searchMatch;
+                  })
                   .map(({ r, idx }) => (
                   <Card key={idx} variant="outlined"
                     sx={{ borderRadius: 2, opacity: sentSet.has(idx) ? 0.75 : 1 }}>
@@ -1889,6 +1899,7 @@ function ManualCampaignsPanel() {
   const [imgCache,  setImgCache]  = useState({});
   const [sentSet,   setSentSet]   = useState(new Set());
   const [linkTab,   setLinkTab]   = useState('tosend');
+  const [linkSearch, setLinkSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1995,6 +2006,11 @@ function ManualCampaignsPanel() {
               Recipients & Links ({recs.length}) — 📤 To Send: {recs.length - sentSet.size} · ✅ Sent: {sentSet.size}
             </Typography>
 
+            {/* Search */}
+            <TextField size="small" fullWidth placeholder="Search by name or number…"
+              value={linkSearch} onChange={e => setLinkSearch(e.target.value)}
+              sx={{ mb: 1 }}
+              InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>🔍</Typography> }} />
             {/* Sub-tabs */}
             <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
               <Button size="small" variant={linkTab === 'tosend' ? 'contained' : 'outlined'}
@@ -2020,6 +2036,8 @@ function ManualCampaignsPanel() {
               )}
               {recs.map((r, idx) => {
                 if (linkTab === 'tosend' ? sentSet.has(idx) : !sentSet.has(idx)) return null;
+                const q = linkSearch.trim().toLowerCase();
+                if (q && !r.name.toLowerCase().includes(q) && !r.mobile.includes(q)) return null;
                 const personalMsg = (selected.message || '').replace(/\{name\}/gi, r.name);
                 return (
                   <Card key={idx} variant="outlined" sx={{ borderRadius: 2, opacity: sentSet.has(idx) ? 0.75 : 1 }}>
