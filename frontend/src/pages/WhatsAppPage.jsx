@@ -1832,22 +1832,19 @@ function ManualInvitePanel() {
                               Image
                             </Button>
                           )}
-                          {/* Web Share API — share image + message together */}
-                          {r.imgBlobUrl && typeof navigator !== 'undefined' && navigator.canShare && (
-                            <Button size="small" variant="outlined" color="secondary"
+                          {/* Share: auto-download image + open WhatsApp with number+message */}
+                          {r.imgBlobUrl && (
+                            <Button size="small" variant="contained" color="secondary"
                               onClick={async () => {
-                                try {
-                                  const resp = await fetch(r.imgBlobUrl);
-                                  const blob = await resp.blob();
-                                  const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
-                                  if (navigator.canShare({ files: [file] })) {
-                                    await navigator.share({ files: [file], text: r.personalMsg });
-                                  } else {
-                                    downloadImage(r.imgBlobUrl, r.name);
-                                  }
-                                } catch (_) {}
+                                // Step 1: download personalised image to device
+                                downloadImage(r.imgBlobUrl, r.name);
+                                // Step 2: open WhatsApp with this number + pre-filled message
+                                setTimeout(() => {
+                                  window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(r.personalMsg)}`, '_blank');
+                                }, 600);
+                                setSentSet(prev => new Set([...prev, idx]));
                               }}>
-                              📤 Share
+                              📤 Share + Open WA
                             </Button>
                           )}
                           {/* Send WhatsApp wa.me */}
@@ -1952,17 +1949,14 @@ function ManualCampaignsPanel() {
   const shareImg = async (campaign, r) => {
     const url = await getImg(campaign, r.name);
     if (!url) return;
-    try {
-      const resp = await fetch(url);
-      const blob = await resp.blob();
-      const file = new File([blob], `invite_${r.name.replace(/\s+/g,'_')}.png`, { type: 'image/png' });
-      const personalMsg = (campaign.message || '').replace(/\{name\}/gi, r.name);
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], text: personalMsg });
-      } else {
-        downloadImg(campaign, r.name);
-      }
-    } catch (_) {}
+    // Download personalised image to device
+    const a = document.createElement('a');
+    a.href = url; a.download = `invite_${r.name.replace(/\s+/g,'_')}.png`; a.click();
+    // Open WhatsApp with this number + pre-filled message
+    const personalMsg = (campaign.message || '').replace(/\{name\}/gi, r.name);
+    setTimeout(() => {
+      window.open(`https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}`, '_blank');
+    }, 600);
   };
 
   // ── Detail view ──────────────────────────────────────────────────────────────
@@ -2057,10 +2051,10 @@ function ManualCampaignsPanel() {
                               Image
                             </Button>
                           )}
-                          {selected.imageUrl && typeof navigator !== 'undefined' && navigator.canShare && (
-                            <Button size="small" variant="outlined" color="secondary"
+                          {selected.imageUrl && (
+                            <Button size="small" variant="contained" color="secondary"
                               onClick={() => shareImg(selected, r)}>
-                              📤 Share
+                              📤 Share + Open WA
                             </Button>
                           )}
                           {r.waUrl ? (
