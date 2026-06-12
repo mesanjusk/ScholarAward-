@@ -1884,13 +1884,16 @@ function ManualInvitePanel() {
 // ── Manual Campaigns Panel (saved wa.me link campaigns) ───────────────────────
 
 function ManualCampaignsPanel() {
-  const [campaigns, setCampaigns] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [selected,  setSelected]  = useState(null);
-  const [imgCache,  setImgCache]  = useState({});
-  const [sentSet,   setSentSet]   = useState(new Set());
-  const [linkTab,   setLinkTab]   = useState('tosend');
-  const [linkSearch, setLinkSearch] = useState('');
+  const [campaigns,   setCampaigns]  = useState([]);
+  const [loading,     setLoading]    = useState(true);
+  const [selected,    setSelected]   = useState(null);
+  const [imgCache,    setImgCache]   = useState({});
+  const [sentSet,     setSentSet]    = useState(new Set());
+  const [linkTab,     setLinkTab]    = useState('tosend');
+  const [linkSearch,  setLinkSearch] = useState('');
+  const [newName,     setNewName]    = useState('');
+  const [newMobile,   setNewMobile]  = useState('');
+  const [adding,      setAdding]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1940,6 +1943,27 @@ function ManualCampaignsPanel() {
     a.href = url; a.download = `invite_${name.replace(/\s+/g,'_')}.png`; a.click();
   };
 
+  const addRecipient = async () => {
+    if (!newName.trim() || !newMobile.trim()) return;
+    setAdding(true);
+    try {
+      const d = newMobile.replace(/[^\d]/g, '').trim();
+      const mobile = d.length === 10 ? '91' + d : d;
+      const personalMsg = (selected.message || '').replace(/\{name\}/gi, newName.trim());
+      const waUrl = `https://wa.me/${mobile}?text=${encodeURIComponent(personalMsg)}`;
+      const newRec = { name: newName.trim(), mobile, waUrl };
+      const updatedRecipients = [...(selected.recipients || []), newRec];
+      const res = await whatsappService.updateCampaign(selected._id, { recipients: updatedRecipients });
+      const updated = res.data;
+      setSelected(updated);
+      setCampaigns(prev => prev.map(c => c._id === updated._id ? updated : c));
+      setNewName('');
+      setNewMobile('');
+    } catch (e) {
+      alert('Failed to add recipient: ' + (e?.response?.data?.message || e.message));
+    } finally { setAdding(false); }
+  };
+
   const shareImg = async (campaign, r) => {
     const url = await getImg(campaign, r.name);
     if (!url) return;
@@ -1982,6 +2006,24 @@ function ManualCampaignsPanel() {
                 sx={{ width: '100%', maxWidth: 320, borderRadius: 1, objectFit: 'contain' }} />
             </CardContent></Card>
           )}
+
+          {/* Add recipient form */}
+          <Card><CardContent>
+            <Typography fontWeight={700} sx={{ mb: 1.5 }}>➕ Add Recipient</Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <TextField size="small" label="Name" value={newName}
+                onChange={e => setNewName(e.target.value)} sx={{ flex: 1 }} />
+              <TextField size="small" label="Mobile (10 or 12 digit)" value={newMobile}
+                onChange={e => setNewMobile(e.target.value)} sx={{ flex: 1 }}
+                onKeyDown={e => e.key === 'Enter' && addRecipient()} />
+              <Button variant="contained" size="small" sx={{ whiteSpace: 'nowrap' }}
+                disabled={adding || !newName.trim() || !newMobile.trim()}
+                startIcon={adding ? <CircularProgress size={14} color="inherit" /> : null}
+                onClick={addRecipient}>
+                {adding ? 'Adding…' : 'Add'}
+              </Button>
+            </Stack>
+          </CardContent></Card>
 
           <Card><CardContent>
             <Typography fontWeight={700} sx={{ mb: 1.5 }}>
