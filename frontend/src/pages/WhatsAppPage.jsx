@@ -22,6 +22,14 @@ import ExpandMoreIcon       from '@mui/icons-material/ExpandMore';
 import NavigateNextIcon     from '@mui/icons-material/NavigateNext';
 import NavigateBeforeIcon   from '@mui/icons-material/NavigateBefore';
 import HistoryIcon          from '@mui/icons-material/History';
+import EditIcon             from '@mui/icons-material/Edit';
+import DeleteIcon           from '@mui/icons-material/Delete';
+import Fab                  from '@mui/material/Fab';
+import Dialog               from '@mui/material/Dialog';
+import DialogTitle          from '@mui/material/DialogTitle';
+import DialogContent        from '@mui/material/DialogContent';
+import DialogActions        from '@mui/material/DialogActions';
+import IconButton           from '@mui/material/IconButton';
 import PageHeader    from '../components/PageHeader';
 import PageSurface   from '../components/PageSurface';
 import ResponsiveDialog from '../components/ResponsiveDialog';
@@ -1891,9 +1899,22 @@ function ManualCampaignsPanel() {
   const [sentSet,     setSentSet]    = useState(new Set());
   const [linkTab,     setLinkTab]    = useState('tosend');
   const [linkSearch,  setLinkSearch] = useState('');
-  const [newName,     setNewName]    = useState('');
-  const [newMobile,   setNewMobile]  = useState('');
-  const [adding,      setAdding]     = useState(false);
+  const [newName,       setNewName]      = useState('');
+  const [newMobile,     setNewMobile]    = useState('');
+  const [adding,        setAdding]       = useState(false);
+  const [addOpen,       setAddOpen]      = useState(false);
+  const [editMsgOpen,   setEditMsgOpen]  = useState(false);
+  const [editMsg,       setEditMsg]      = useState('');
+  const [editImgOpen,   setEditImgOpen]  = useState(false);
+  const [editImgUrl,    setEditImgUrl]   = useState('');
+  const [editFontStyle, setEditFontStyle] = useState(emptyFontStyle);
+  const [editImgLoaded, setEditImgLoaded] = useState(false);
+  const [editImgEl,     setEditImgEl]    = useState(null);
+  const [editCanvasH,   setEditCanvasH]  = useState(400);
+  const editCanvasRef   = useRef(null);
+  const editIsDragging  = useRef(false);
+  const [uploadingEditImg, setUploadingEditImg] = useState(false);
+  const [savingEdit,    setSavingEdit]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1959,10 +1980,59 @@ function ManualCampaignsPanel() {
       setCampaigns(prev => prev.map(c => c._id === updated._id ? updated : c));
       setNewName('');
       setNewMobile('');
+      setAddOpen(false);
     } catch (e) {
       alert('Failed to add recipient: ' + (e?.response?.data?.message || e.message));
     } finally { setAdding(false); }
   };
+
+  // Regenerate all wa.me links when message changes
+  const saveEditedMessage = async () => {
+    setSavingEdit(true);
+    try {
+      const updatedRecipients = (selected.recipients || []).map(r => {
+        const personalMsg = editMsg.replace(/\{name\}/gi, r.name);
+        return { ...r, waUrl: `https://wa.me/${r.mobile}?text=${encodeURIComponent(personalMsg)}` };
+      });
+      const res = await whatsappService.updateCampaign(selected._id, { message: editMsg, recipients: updatedRecipients });
+      setSelected(res.data);
+      setCampaigns(prev => prev.map(c => c._id === res.data._id ? res.data : c));
+      setEditMsgOpen(false);
+    } catch (e) { alert('Save failed'); }
+    finally { setSavingEdit(false); }
+  };
+
+  // Save edited image + fontStyle
+  const saveEditedImage = async () => {
+    setSavingEdit(true);
+    try {
+      const res = await whatsappService.updateCampaign(selected._id, { imageUrl: editImgUrl, fontStyle: editFontStyle });
+      setSelected(res.data);
+      setCampaigns(prev => prev.map(c => c._id === res.data._id ? res.data : c));
+      setImgCache({});  // clear cached blobs so new image is used
+      setEditImgOpen(false);
+    } catch (e) { alert('Save failed'); }
+    finally { setSavingEdit(false); }
+  };
+
+  // Canvas drag for edit image popup
+  const editGetFrac = (e) => {
+    const c = editCanvasRef.current; if (!c) return null;
+    const r = c.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: Math.min(1, Math.max(0, (cx - r.left) / r.width)), y: Math.min(1, Math.max(0, (cy - r.top) / r.height)) };
+  };
+  const editDragStart = (e) => { e.preventDefault(); editIsDragging.current = true; const p = editGetFrac(e); if (p) setEditFontStyle(f => ({ ...f, ...p })); };
+  const editDragMove  = (e) => { if (!editIsDragging.current) return; e.preventDefault(); const p = editGetFrac(e); if (p) setEditFontStyle(f => ({ ...f, ...p })); };
+  const editDragEnd   = () => { editIsDragging.current = false; };
+
+  // Redraw edit canvas
+  useEffect(() => {
+    if (!editImgLoaded || !editCanvasRef.current || !editImgEl) return;
+    const previewName = selected?.recipients?.[0]?.name || 'Guest';
+    drawNameOnCanvas(editCanvasRef.current, editImgEl, previewName, editFontStyle);
+  }, [editImgLoaded, editFontStyle, editImgEl, selected]);
 
   const shareImg = async (campaign, r) => {
     const url = await getImg(campaign, r.name);
@@ -1974,10 +2044,10 @@ function ManualCampaignsPanel() {
   // ── Detail view ──────────────────────────────────────────────────────────────
   if (selected) {
     const recs = selected.recipients || [];
-    const filtered = recs.filter((_, i) => linkTab === 'tosend' ? !sentSet.has(i) : sentSet.has(i));
     return (
-      <PageSurface sx={{ pb: { xs: 10, sm: 3 } }}>
+      <PageSurface sx={{ pb: { xs: 12, sm: 5 }, position: 'relative' }}>
         <Stack spacing={2}>
+          {/* Header */}
           <Card><CardContent>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
               <Box>
@@ -1990,70 +2060,70 @@ function ManualCampaignsPanel() {
             </Stack>
           </CardContent></Card>
 
-          {selected.message && (
-            <Card><CardContent>
-              <Typography fontWeight={700} sx={{ mb: 1 }}>Message</Typography>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-                {selected.message}
-              </Typography>
-            </CardContent></Card>
-          )}
-
-          {selected.imageUrl && (
-            <Card><CardContent>
-              <Typography fontWeight={700} sx={{ mb: 1 }}>Base Image</Typography>
-              <Box component="img" src={selected.imageUrl} alt="base"
-                sx={{ width: '100%', maxWidth: 320, borderRadius: 1, objectFit: 'contain' }} />
-            </CardContent></Card>
-          )}
-
-          {/* Add recipient form */}
+          {/* Message with edit icon */}
           <Card><CardContent>
-            <Typography fontWeight={700} sx={{ mb: 1.5 }}>➕ Add Recipient</Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField size="small" label="Name" value={newName}
-                onChange={e => setNewName(e.target.value)} sx={{ flex: 1 }} />
-              <TextField size="small" label="Mobile (10 or 12 digit)" value={newMobile}
-                onChange={e => setNewMobile(e.target.value)} sx={{ flex: 1 }}
-                onKeyDown={e => e.key === 'Enter' && addRecipient()} />
-              <Button variant="contained" size="small" sx={{ whiteSpace: 'nowrap' }}
-                disabled={adding || !newName.trim() || !newMobile.trim()}
-                startIcon={adding ? <CircularProgress size={14} color="inherit" /> : null}
-                onClick={addRecipient}>
-                {adding ? 'Adding…' : 'Add'}
-              </Button>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography fontWeight={700}>Message</Typography>
+              <IconButton size="small" onClick={() => { setEditMsg(selected.message || ''); setEditMsgOpen(true); }}>
+                <EditIcon fontSize="small" />
+              </IconButton>
             </Stack>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              {selected.message || '(no message)'}
+            </Typography>
           </CardContent></Card>
 
+          {/* Image with edit / delete icons */}
+          <Card><CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography fontWeight={700}>Invitation Image</Typography>
+              <Stack direction="row" spacing={0.5}>
+                <IconButton size="small" onClick={() => {
+                  setEditImgUrl(selected.imageUrl || '');
+                  setEditFontStyle(selected.fontStyle || emptyFontStyle);
+                  setEditImgLoaded(false); setEditImgEl(null);
+                  setEditImgOpen(true);
+                }}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                {selected.imageUrl && (
+                  <IconButton size="small" color="error" onClick={async () => {
+                    if (!window.confirm('Remove image from this campaign?')) return;
+                    const res = await whatsappService.updateCampaign(selected._id, { imageUrl: '' });
+                    setSelected(res.data);
+                    setCampaigns(prev => prev.map(c => c._id === res.data._id ? res.data : c));
+                    setImgCache({});
+                  }}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
+            </Stack>
+            {selected.imageUrl
+              ? <Box component="img" src={selected.imageUrl} alt="base"
+                  sx={{ width: '100%', maxWidth: 320, borderRadius: 1, objectFit: 'contain' }} />
+              : <Typography variant="body2" color="text.secondary">No image — tap ✏️ to add one</Typography>
+            }
+          </CardContent></Card>
+
+          {/* Recipients list */}
           <Card><CardContent>
             <Typography fontWeight={700} sx={{ mb: 1.5 }}>
-              Recipients & Links ({recs.length}) — 📤 To Send: {recs.length - sentSet.size} · ✅ Sent: {sentSet.size}
+              Recipients ({recs.length}) — 📤 To Send: {recs.length - sentSet.size} · ✅ Sent: {sentSet.size}
             </Typography>
-
-            {/* Search */}
             <TextField size="small" fullWidth placeholder="Search by name or number…"
-              value={linkSearch} onChange={e => setLinkSearch(e.target.value)}
-              sx={{ mb: 1 }}
+              value={linkSearch} onChange={e => setLinkSearch(e.target.value)} sx={{ mb: 1 }}
               InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>🔍</Typography> }} />
-            {/* Sub-tabs */}
             <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
               <Button size="small" variant={linkTab === 'tosend' ? 'contained' : 'outlined'}
-                onClick={() => setLinkTab('tosend')}>
-                📤 To Send ({recs.length - sentSet.size})
-              </Button>
-              <Button size="small"
-                variant={linkTab === 'sent' ? 'contained' : 'outlined'}
+                onClick={() => setLinkTab('tosend')}>📤 To Send ({recs.length - sentSet.size})</Button>
+              <Button size="small" variant={linkTab === 'sent' ? 'contained' : 'outlined'}
                 color={linkTab === 'sent' ? 'success' : 'inherit'}
-                onClick={() => setLinkTab('sent')}>
-                ✅ Sent ({sentSet.size})
-              </Button>
-              {sentSet.size > 0 && (
-                <Button size="small" variant="text" color="warning" onClick={() => setSentSet(new Set())}>Reset</Button>
-              )}
+                onClick={() => setLinkTab('sent')}>✅ Sent ({sentSet.size})</Button>
+              {sentSet.size > 0 && <Button size="small" variant="text" color="warning" onClick={() => setSentSet(new Set())}>Reset</Button>}
             </Stack>
-
             <Stack spacing={1}>
-              {filtered.length === 0 && (
+              {recs.filter((_, i) => linkTab === 'tosend' ? !sentSet.has(i) : sentSet.has(i)).length === 0 && (
                 <Typography color="text.secondary" textAlign="center" py={1.5} variant="body2">
                   {linkTab === 'tosend' ? '🎉 All sent!' : 'No sent links yet.'}
                 </Typography>
@@ -2062,7 +2132,6 @@ function ManualCampaignsPanel() {
                 if (linkTab === 'tosend' ? sentSet.has(idx) : !sentSet.has(idx)) return null;
                 const q = linkSearch.trim().toLowerCase();
                 if (q && !r.name.toLowerCase().includes(q) && !r.mobile.includes(q)) return null;
-                const personalMsg = (selected.message || '').replace(/\{name\}/gi, r.name);
                 return (
                   <Card key={idx} variant="outlined" sx={{ borderRadius: 2, opacity: sentSet.has(idx) ? 0.75 : 1 }}>
                     <CardContent sx={{ py: '10px !important', px: 1.5 }}>
@@ -2077,35 +2146,23 @@ function ManualCampaignsPanel() {
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                           {selected.imageUrl && (
                             <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
-                              onClick={() => downloadImg(selected, r.name)}>
-                              Image
-                            </Button>
+                              onClick={() => downloadImg(selected, r.name)}>Image</Button>
                           )}
                           {selected.imageUrl && (
                             <Button size="small" variant="contained" color="secondary"
-                              onClick={() => shareImg(selected, r)}>
-                              📤 Share + Open WA
-                            </Button>
+                              onClick={() => shareImg(selected, r)}>📤 Share</Button>
                           )}
-                          {r.waUrl ? (
-                            <Button size="small" variant="contained" color="success"
-                              onClick={() => { setSentSet(prev => new Set([...prev, idx])); openExternalUrl(r.waUrl); }}>
-                              📱 Send WA
-                            </Button>
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">No link</Typography>
-                          )}
-                          {sentSet.has(idx) ? (
-                            <Button size="small" variant="text" color="warning"
-                              onClick={() => setSentSet(prev => { const s = new Set(prev); s.delete(idx); return s; })}>
-                              Undo
-                            </Button>
-                          ) : (
-                            <Button size="small" variant="text" color="success"
-                              onClick={() => setSentSet(prev => new Set([...prev, idx]))}>
-                              Mark Sent
-                            </Button>
-                          )}
+                          {r.waUrl
+                            ? <Button size="small" variant="contained" color="success"
+                                onClick={() => { setSentSet(prev => new Set([...prev, idx])); openExternalUrl(r.waUrl); }}>
+                                📱 Send WA
+                              </Button>
+                            : <Typography variant="caption" color="text.secondary">No link</Typography>}
+                          {sentSet.has(idx)
+                            ? <Button size="small" variant="text" color="warning"
+                                onClick={() => setSentSet(prev => { const s = new Set(prev); s.delete(idx); return s; })}>Undo</Button>
+                            : <Button size="small" variant="text" color="success"
+                                onClick={() => setSentSet(prev => new Set([...prev, idx]))}>Mark Sent</Button>}
                         </Stack>
                       </Stack>
                     </CardContent>
@@ -2115,6 +2172,139 @@ function ManualCampaignsPanel() {
             </Stack>
           </CardContent></Card>
         </Stack>
+
+        {/* FAB — Add recipient (WhatsApp style) */}
+        <Fab color="success" size="medium"
+          sx={{ position: 'fixed', bottom: { xs: 80, sm: 32 }, right: { xs: 16, sm: 32 }, zIndex: 1200 }}
+          onClick={() => { setNewName(''); setNewMobile(''); setAddOpen(true); }}>
+          <AddIcon />
+        </Fab>
+
+        {/* Add Recipient Dialog */}
+        <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>➕ Add Recipient</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <TextField autoFocus label="Name" value={newName} onChange={e => setNewName(e.target.value)} fullWidth />
+              <TextField label="Mobile (10 or 12 digit)" value={newMobile}
+                onChange={e => setNewMobile(e.target.value)} fullWidth
+                onKeyDown={e => e.key === 'Enter' && addRecipient()} />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={addRecipient}
+              disabled={adding || !newName.trim() || !newMobile.trim()}
+              startIcon={adding ? <CircularProgress size={14} color="inherit" /> : null}>
+              {adding ? 'Adding…' : 'Add'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Edit Message Dialog */}
+        <Dialog open={editMsgOpen} onClose={() => setEditMsgOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>✏️ Edit Message</DialogTitle>
+          <DialogContent>
+            <TextField autoFocus fullWidth multiline minRows={5} label="Message"
+              value={editMsg} onChange={e => setEditMsg(e.target.value)} sx={{ mt: 1 }}
+              helperText="{name} is replaced per recipient. Saving updates all wa.me links." />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditMsgOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={saveEditedMessage}
+              disabled={savingEdit}
+              startIcon={savingEdit ? <CircularProgress size={14} color="inherit" /> : null}>
+              {savingEdit ? 'Saving…' : 'Save & Regenerate Links'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Edit Image Dialog */}
+        <Dialog open={editImgOpen} onClose={() => setEditImgOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>✏️ Edit Image & Name Position</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Stack direction="row" spacing={1}>
+                <TextField fullWidth size="small" label="Image URL" value={editImgUrl}
+                  onChange={e => {
+                    setEditImgUrl(e.target.value);
+                    setEditImgLoaded(false); setEditImgEl(null);
+                    if (!e.target.value) return;
+                    const img = new window.Image(); img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                      const h = Math.round(600 * img.naturalHeight / img.naturalWidth) || 400;
+                      setEditCanvasH(Math.max(200, Math.min(h, 700)));
+                      setEditImgEl(img); setEditImgLoaded(true);
+                    };
+                    img.src = e.target.value;
+                  }} />
+                <Button component="label" variant="outlined" sx={{ whiteSpace: 'nowrap' }}
+                  startIcon={uploadingEditImg ? <CircularProgress size={16} /> : <UploadFileIcon />}
+                  disabled={uploadingEditImg}>
+                  {uploadingEditImg ? '…' : 'Upload'}
+                  <input hidden accept="image/*" type="file" onChange={async (e) => {
+                    const file = e.target.files?.[0]; if (!file) return;
+                    setUploadingEditImg(true);
+                    try {
+                      const { default: api } = await import('../api');
+                      const fd = new FormData(); fd.append('file', file); fd.append('folder', 'bk_award_invites');
+                      const res = await api.post('/uploads/public', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                      const url = res?.data?.url || '';
+                      setEditImgUrl(url);
+                      const img = new window.Image(); img.crossOrigin = 'anonymous';
+                      img.onload = () => {
+                        const h = Math.round(600 * img.naturalHeight / img.naturalWidth) || 400;
+                        setEditCanvasH(Math.max(200, Math.min(h, 700)));
+                        setEditImgEl(img); setEditImgLoaded(true);
+                      };
+                      img.src = url;
+                    } finally { setUploadingEditImg(false); }
+                  }} />
+                </Button>
+              </Stack>
+              {editImgLoaded && editImgEl && (
+                <>
+                  <Typography variant="caption" color="text.secondary">✋ Drag to reposition name</Typography>
+                  <Box sx={{ border: '2px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: '#111', cursor: 'crosshair', userSelect: 'none', touchAction: 'none' }}
+                    onMouseDown={editDragStart} onMouseMove={editDragMove} onMouseUp={editDragEnd} onMouseLeave={editDragEnd}
+                    onTouchStart={editDragStart} onTouchMove={editDragMove} onTouchEnd={editDragEnd}>
+                    <canvas ref={editCanvasRef} width={600} height={editCanvasH} style={{ display: 'block', width: '100%', height: 'auto' }} />
+                  </Box>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <TextField select size="small" label="Font" value={editFontStyle.fontFamily} sx={{ minWidth: 130 }}
+                      onChange={e => setEditFontStyle(f => ({ ...f, fontFamily: e.target.value }))}>
+                      {FONT_FAMILIES.map(ff => <MenuItem key={ff.value} value={ff.value}>{ff.label}</MenuItem>)}
+                    </TextField>
+                    <TextField size="small" type="number" label="Size" value={editFontStyle.fontSize} sx={{ width: 80 }}
+                      inputProps={{ min: 10, max: 200 }}
+                      onChange={e => setEditFontStyle(f => ({ ...f, fontSize: Number(e.target.value) }))} />
+                    <Stack spacing={0.25} justifyContent="center">
+                      <Typography variant="caption" color="text.secondary">Color</Typography>
+                      <input type="color" value={editFontStyle.color}
+                        onChange={e => setEditFontStyle(f => ({ ...f, color: e.target.value }))}
+                        style={{ width: 44, height: 36, border: 'none', cursor: 'pointer', borderRadius: 4 }} />
+                    </Stack>
+                    <Button size="small" variant={editFontStyle.fontWeight === 'bold' ? 'contained' : 'outlined'}
+                      onClick={() => setEditFontStyle(f => ({ ...f, fontWeight: f.fontWeight === 'bold' ? 'normal' : 'bold' }))}><strong>B</strong></Button>
+                    <Button size="small" variant={editFontStyle.shadow ? 'contained' : 'outlined'}
+                      onClick={() => setEditFontStyle(f => ({ ...f, shadow: !f.shadow }))}>Shadow</Button>
+                  </Stack>
+                </>
+              )}
+              {!editImgUrl && (
+                <Typography variant="body2" color="text.secondary">Enter URL or upload an image above to preview</Typography>
+              )}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditImgOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={saveEditedImage} disabled={savingEdit}
+              startIcon={savingEdit ? <CircularProgress size={14} color="inherit" /> : null}>
+              {savingEdit ? 'Saving…' : 'Save Image'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
       </PageSurface>
     );
   }
