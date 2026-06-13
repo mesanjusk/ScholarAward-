@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/stoic-maxwell-ExyRy, claude/festive-galileo-q7f86i]
   workflow_dispatch:
 
 permissions:
@@ -39,18 +39,7 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
-      - name: Add Capacitor Android platform
-        working-directory: frontend
-        run: npx cap add android
-
-      - name: Copy native plugin & MainActivity
-        run: |
-          DEST=frontend/android/app/src/main/java/com/scholarawards/app
-          mkdir -p "$DEST"
-          cp frontend/android-native/WhatsAppSharePlugin.java "$DEST/"
-          cp frontend/android-native/MainActivity.java "$DEST/"
-
-      - name: Sync Capacitor
+      - name: Sync Capacitor (android already in repo)
         working-directory: frontend
         run: npx cap sync android
 

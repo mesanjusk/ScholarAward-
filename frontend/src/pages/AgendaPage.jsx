@@ -14,9 +14,11 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DownloadIcon from '@mui/icons-material/Download';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
+import SyncIcon from '@mui/icons-material/Sync';
 import { jsPDF } from 'jspdf';
 import PageHeader from '../components/PageHeader';
 import PageSurface from '../components/PageSurface';
@@ -44,23 +46,20 @@ const PRESENTER_ROWS = [
   { row: 4, label: 'Special Guest 2',      source: 'guest' },
 ];
 
-// Fuzzy category title match — handles minor name differences
 function catTitleMatch(agendaTitle, dbCatTitle) {
   const a = (agendaTitle || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
   const b = (dbCatTitle  || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
   return a === b || a.includes(b) || b.includes(a);
 }
 
-// Get student name string
 function sName(s) { return (s.fullName || `${s.firstName || ''} ${s.lastName || ''}`).trim(); }
 
-// ── Count badge ───────────────────────────────────────────────────────────────
 function CountBadge({ count }) {
   if (!count) return null;
   return (
-    <Box sx={{ bgcolor: '#e65100', color: '#fff', fontSize: 11, fontWeight: 900,
-      minWidth: 24, height: 24, borderRadius: 0, px: 0.75,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', ml: 1 }}>
+    <Box sx={{ bgcolor: '#e65100', color: '#fff', fontSize: 10, fontWeight: 900,
+      minWidth: 20, height: 20, borderRadius: 0, px: 0.5,
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', ml: 0.75 }}>
       ×{count}
     </Box>
   );
@@ -95,7 +94,7 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
         <Box sx={{ px: 2, pt: 2, pb: 1.5, bgcolor: NAVY, color: 'white', flexShrink: 0 }}>
           <Stack direction="row" alignItems="center">
             <Typography fontWeight={900} fontSize={20} sx={{ flex: 1 }}>{rowLabel}</Typography>
-            <Typography fontSize={14} sx={{ mr: 1, opacity: 0.7 }}>{selected.length} selected</Typography>
+            <Typography fontSize={13} sx={{ mr: 1, opacity: 0.7 }}>{selected.length} selected</Typography>
             <IconButton onClick={onClose} sx={{ color: 'white' }}><CloseIcon /></IconButton>
           </Stack>
           <TextField fullWidth size="small" placeholder="Search name…" value={search}
@@ -109,16 +108,16 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
         <Box sx={{ overflowY: 'auto', flex: 1, bgcolor: 'white' }}>
           {selected.length > 0 && (
             <>
-              <Box sx={{ px: 2, py: 0.75, bgcolor: '#e3f2fd' }}>
+              <Box sx={{ px: 2, py: 0.5, bgcolor: '#e3f2fd' }}>
                 <Typography fontSize={11} fontWeight={800} color="primary">✓ SELECTED ({selected.length})</Typography>
               </Box>
               {selected.map(name => (
                 <Box key={name} onClick={() => toggle(name)}
-                  sx={{ display: 'flex', alignItems: 'center', px: 2, py: 2,
+                  sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5,
                     borderBottom: '1px solid #e0e0e0', cursor: 'pointer', bgcolor: '#f0f7ff',
                     '&:hover': { bgcolor: '#dbeeff' } }}>
-                  <CheckBoxIcon sx={{ color: '#1565c0', mr: 2, fontSize: 26 }} />
-                  <Typography fontWeight={900} fontSize={19} sx={{ flex: 1 }}>{name}</Typography>
+                  <CheckBoxIcon sx={{ color: '#1565c0', mr: 2, fontSize: 24 }} />
+                  <Typography fontWeight={900} fontSize={18} sx={{ flex: 1 }}>{name}</Typography>
                   <CountBadge count={presenterCounts[name] || 0} />
                 </Box>
               ))}
@@ -126,35 +125,35 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
             </>
           )}
           {filtered.filter(n => !selected.includes(n)).length === 0 && !selected.length && (
-            <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center', fontSize: 16 }}>
+            <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center', fontSize: 15 }}>
               No names found — tap + Add New below
             </Typography>
           )}
           {filtered.filter(n => !selected.includes(n)).map(name => (
             <Box key={name} onClick={() => toggle(name)}
-              sx={{ display: 'flex', alignItems: 'center', px: 2, py: 2,
+              sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5,
                 borderBottom: '1px solid #e0e0e0', cursor: 'pointer',
                 '&:hover': { bgcolor: '#f5f5f5' } }}>
-              <CheckBoxOutlineBlankIcon sx={{ color: '#bdbdbd', mr: 2, fontSize: 26 }} />
-              <Typography fontSize={18} sx={{ flex: 1 }}>{name}</Typography>
+              <CheckBoxOutlineBlankIcon sx={{ color: '#bdbdbd', mr: 2, fontSize: 24 }} />
+              <Typography fontSize={17} sx={{ flex: 1 }}>{name}</Typography>
               <CountBadge count={presenterCounts[name] || 0} />
             </Box>
           ))}
         </Box>
 
-        <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '2px solid #e0e0e0', flexShrink: 0 }}>
+        <Box sx={{ px: 2, py: 1, bgcolor: 'white', borderTop: '2px solid #e0e0e0', flexShrink: 0 }}>
           <Stack direction="row" spacing={1}>
-            <Button startIcon={<AddIcon />} onClick={() => { setNewName(''); setAddOpen(true); }}
+            <Button size="small" startIcon={<AddIcon />} onClick={() => { setNewName(''); setAddOpen(true); }}
               sx={{ borderRadius: 0 }}>Add New</Button>
-            <Button variant="contained" onClick={onClose}
-              sx={{ borderRadius: 0, flex: 1, fontWeight: 800, fontSize: 16, py: 1 }}>Done</Button>
+            <Button variant="contained" onClick={onClose} size="small"
+              sx={{ borderRadius: 0, flex: 1, fontWeight: 800, fontSize: 15 }}>Done</Button>
           </Stack>
         </Box>
       </Dialog>
 
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { borderRadius: 0 } }}>
-        <DialogTitle>Add New Name</DialogTitle>
+        <DialogTitle sx={{ py: 1.5, fontSize: 15 }}>Add New Name</DialogTitle>
         <DialogContent>
           <TextField autoFocus fullWidth size="small" label="Full Name" value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -162,8 +161,8 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
             InputProps={{ sx: { borderRadius: 0 } }} sx={{ mt: 1 }} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdd} disabled={!newName.trim()}
+          <Button size="small" onClick={() => setAddOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
+          <Button size="small" variant="contained" onClick={handleAdd} disabled={!newName.trim()}
             sx={{ borderRadius: 0 }}>Add</Button>
         </DialogActions>
       </Dialog>
@@ -172,8 +171,6 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
 }
 
 // ── Full-screen student picker ────────────────────────────────────────────────
-// allDbStudents: ALL students from API (with categoryId populated)
-// Filtered client-side by category title match
 function StudentPicker({ open, onClose, catTitle, existingNames, allDbStudents, onAdd }) {
   const [search, setSearch] = useState('');
   const [customName, setCustomName] = useState('');
@@ -183,7 +180,6 @@ function StudentPicker({ open, onClose, catTitle, existingNames, allDbStudents, 
     if (open) { setSearch(''); setCustomName(''); setCustomPct(''); }
   }, [open]);
 
-  // Filter allDbStudents by category title (fuzzy match)
   const catStudents = useMemo(() => {
     return allDbStudents.filter(s => {
       const dbCatTitle = s.categoryId?.title || s.categoryName || s.categoryOther || '';
@@ -191,7 +187,6 @@ function StudentPicker({ open, onClose, catTitle, existingNames, allDbStudents, 
     });
   }, [allDbStudents, catTitle]);
 
-  // If no category match, fall back to all students (with search)
   const sourceList = catStudents.length > 0 ? catStudents : allDbStudents;
   const filtered = sourceList.filter(s => {
     const name = sName(s).toLowerCase();
@@ -212,18 +207,18 @@ function StudentPicker({ open, onClose, catTitle, existingNames, allDbStudents, 
   return (
     <Dialog open={open} onClose={onClose} fullScreen
       PaperProps={{ sx: { display: 'flex', flexDirection: 'column', borderRadius: 0, bgcolor: '#f5f5f5' } }}>
-      <Box sx={{ px: 2, pt: 2, pb: 1.5, bgcolor: NAVY, color: 'white', flexShrink: 0 }}>
+      <Box sx={{ px: 2, pt: 1.5, pb: 1, bgcolor: NAVY, color: 'white', flexShrink: 0 }}>
         <Stack direction="row" alignItems="center">
           <Box sx={{ flex: 1 }}>
-            <Typography fontWeight={900} fontSize={20}>Add Student</Typography>
-            <Typography fontSize={13} sx={{ opacity: 0.7 }}>
-              {catTitle} · {catStudents.length > 0 ? `${catStudents.length} in DB` : `${allDbStudents.length} total (no category match)`}
+            <Typography fontWeight={900} fontSize={18}>Add Student</Typography>
+            <Typography fontSize={12} sx={{ opacity: 0.7 }}>
+              {catTitle} · {catStudents.length > 0 ? `${catStudents.length} in DB` : `${allDbStudents.length} total`}
             </Typography>
           </Box>
           <IconButton onClick={onClose} sx={{ color: 'white' }}><CloseIcon /></IconButton>
         </Stack>
         <TextField fullWidth size="small" placeholder="Search student…" value={search}
-          onChange={e => setSearch(e.target.value)} autoFocus sx={{ mt: 1.5 }}
+          onChange={e => setSearch(e.target.value)} autoFocus sx={{ mt: 1 }}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'white' }} /></InputAdornment>,
             sx: { borderRadius: 0, bgcolor: 'rgba(255,255,255,0.15)', color: 'white',
               '& input': { color: 'white' }, '& input::placeholder': { color: 'rgba(255,255,255,0.6)' } } }}
@@ -232,7 +227,7 @@ function StudentPicker({ open, onClose, catTitle, existingNames, allDbStudents, 
 
       <Box sx={{ overflowY: 'auto', flex: 1, bgcolor: 'white' }}>
         {filtered.length === 0 && (
-          <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center', fontSize: 16 }}>
+          <Typography color="text.secondary" sx={{ p: 2.5, textAlign: 'center', fontSize: 14 }}>
             {search ? 'No match — try different spelling' : 'No students found'}
           </Typography>
         )}
@@ -241,34 +236,34 @@ function StudentPicker({ open, onClose, catTitle, existingNames, allDbStudents, 
           const already = existingNames.has(name.toLowerCase());
           return (
             <Box key={s._id} onClick={() => !already && addFromDb(s)}
-              sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.75,
+              sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25,
                 borderBottom: '1px solid #e0e0e0', cursor: already ? 'default' : 'pointer',
-                opacity: already ? 0.45 : 1, '&:hover': { bgcolor: already ? 'transparent' : '#f5f5f5' } }}>
+                opacity: already ? 0.4 : 1, '&:hover': { bgcolor: already ? 'transparent' : '#f5f5f5' } }}>
               <Box sx={{ flex: 1 }}>
-                <Typography fontWeight={700} fontSize={17}>{name}</Typography>
-                <Typography fontSize={12} color="text.secondary">
+                <Typography fontWeight={700} fontSize={15}>{name}</Typography>
+                <Typography fontSize={11} color="text.secondary">
                   {s.categoryId?.title || s.categoryOther || ''}
                   {s.percentage ? ` · ${s.percentage}%` : ''}
                 </Typography>
               </Box>
-              {already ? <Chip label="added" size="small" sx={{ borderRadius: 0 }} /> : <AddIcon sx={{ color: 'primary.main' }} />}
+              {already ? <Chip label="added" size="small" sx={{ borderRadius: 0, fontSize: 10 }} /> : <AddIcon sx={{ color: 'primary.main', fontSize: 18 }} />}
             </Box>
           );
         })}
       </Box>
 
-      <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '2px solid #e0e0e0', flexShrink: 0 }}>
-        <Typography fontSize={12} color="text.secondary" sx={{ mb: 1 }}>Or type manually:</Typography>
-        <Stack direction="row" spacing={1}>
+      <Box sx={{ px: 2, py: 1, bgcolor: 'white', borderTop: '2px solid #e0e0e0', flexShrink: 0 }}>
+        <Typography fontSize={11} color="text.secondary" sx={{ mb: 0.75 }}>Or type manually:</Typography>
+        <Stack direction="row" spacing={0.75}>
           <TextField size="small" placeholder="Student name" value={customName}
             onChange={e => setCustomName(e.target.value)} sx={{ flex: 2 }}
             onKeyDown={e => e.key === 'Enter' && addCustom()}
             InputProps={{ sx: { borderRadius: 0 } }} />
           <TextField size="small" placeholder="%" value={customPct}
-            onChange={e => setCustomPct(e.target.value)} sx={{ flex: 0.8 }}
+            onChange={e => setCustomPct(e.target.value)} sx={{ flex: 0.7 }}
             onKeyDown={e => e.key === 'Enter' && addCustom()}
             InputProps={{ sx: { borderRadius: 0 } }} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={addCustom}
+          <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={addCustom}
             disabled={!customName.trim()} sx={{ borderRadius: 0 }}>Add</Button>
         </Stack>
       </Box>
@@ -290,7 +285,6 @@ function StudentRow({ student, index, onSave, onDelete, teams, guests, presenter
   const [saving, setSaving] = useState(false);
   const [pickerRow, setPickerRow] = useState(null);
 
-  // Sync with server updates
   useEffect(() => { setRowSel(buildSelected(student.presenters)); },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(student.presenters)]
@@ -315,55 +309,54 @@ function StudentRow({ student, index, onSave, onDelete, teams, guests, presenter
   }
 
   const isDone = (student.status || 'live') === 'done';
-  const allNames = [1,2,3,4].flatMap(row => rowSel[row] || []);
 
   return (
-    <Box sx={{ borderBottom: '1px solid #e0e0e0', bgcolor: isDone ? '#f1f8e9' : 'white' }}>
+    <Box sx={{ borderBottom: '1px solid #e8e8e8', bgcolor: isDone ? '#f9fbe7' : 'white' }}>
       {/* Student header */}
-      <Stack direction="row" alignItems="flex-start" sx={{ px: 1.5, py: 1.25, bgcolor: isDone ? '#e8f5e9' : '#f8f9fa' }}>
-        <Typography fontSize={13} color="text.secondary" sx={{ minWidth: 24, mt: 0.3, fontWeight: 700 }}>
+      <Stack direction="row" alignItems="center" sx={{ px: 1.25, py: 0.75, bgcolor: isDone ? '#f1f8e9' : '#f8f9fa' }}>
+        <Typography fontSize={11} color="text.secondary" sx={{ minWidth: 20, fontWeight: 700, flexShrink: 0 }}>
           {index + 1}
         </Typography>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap">
-            <Typography fontWeight={900} fontSize={17}>{student.name}</Typography>
+          <Stack direction="row" alignItems="center" spacing={0.5} flexWrap="wrap">
+            <Typography fontWeight={800} fontSize={14} sx={{ lineHeight: 1.3 }}>{student.name}</Typography>
             {student.percentage && (
-              <Box sx={{ fontSize: 12, fontWeight: 800, color: '#1565c0', bgcolor: '#e3f2fd', px: 0.75, py: 0.2 }}>
+              <Box sx={{ fontSize: 10, fontWeight: 800, color: '#1565c0', bgcolor: '#e3f2fd', px: 0.6, py: 0.1 }}>
                 {student.percentage}
               </Box>
             )}
-            {student.extra && <Typography fontSize={12} color="text.secondary">{student.extra}</Typography>}
-            {saving && <CircularProgress size={13} />}
+            {student.extra && <Typography fontSize={11} color="text.secondary">{student.extra}</Typography>}
+            {saving && <CircularProgress size={11} />}
           </Stack>
         </Box>
         <IconButton size="small" onClick={toggleStatus}
-          sx={{ p: 0.5, color: isDone ? DONE_BG : '#bdbdbd', ml: 0.5 }}>
-          {isDone ? <CheckCircleIcon /> : <RadioButtonUncheckedIcon />}
+          sx={{ p: 0.4, color: isDone ? DONE_BG : '#c0c0c0', flexShrink: 0 }}>
+          {isDone ? <CheckCircleIcon sx={{ fontSize: 17 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 17 }} />}
         </IconButton>
-        <IconButton size="small" color="error" onClick={() => onDelete(student)} sx={{ p: 0.5 }}>
-          <DeleteIcon sx={{ fontSize: 18 }} />
+        <IconButton size="small" color="error" onClick={() => onDelete(student)} sx={{ p: 0.4 }}>
+          <DeleteIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Stack>
 
-      {/* Presenter rows — NO labels, just row number + names */}
+      {/* Presenter rows — row number + names only, no labels */}
       {PRESENTER_ROWS.map(rd => {
         const sel = rowSel[rd.row] || [];
         return (
-          <Stack key={rd.row} direction="row" alignItems="flex-start"
+          <Stack key={rd.row} direction="row" alignItems="center"
             onClick={() => setPickerRow(rd.row)}
-            sx={{ px: 1.5, py: sel.length ? 0.75 : 0.5, cursor: 'pointer',
+            sx={{ px: 1.25, py: 0.4, cursor: 'pointer', minHeight: 28,
               borderTop: '1px solid #f0f0f0', '&:hover': { bgcolor: '#fafafa' } }}>
-            <Typography fontSize={11} color="text.disabled" sx={{ minWidth: 18, pt: 0.25, flexShrink: 0 }}>
+            <Typography fontSize={10} color="text.disabled" sx={{ minWidth: 16, flexShrink: 0 }}>
               {rd.row}
             </Typography>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               {sel.length === 0 ? (
-                <Typography fontSize={14} color="text.disabled" fontStyle="italic">—</Typography>
+                <Typography fontSize={12} color="text.disabled" fontStyle="italic">—</Typography>
               ) : sel.map(name => (
-                <Typography key={name} fontWeight={800} fontSize={15} sx={{ lineHeight: 1.75 }}>{name}</Typography>
+                <Typography key={name} fontWeight={700} fontSize={13} sx={{ lineHeight: 1.6 }}>{name}</Typography>
               ))}
             </Box>
-            <EditIcon sx={{ fontSize: 16, color: '#ccc', mt: 0.25, flexShrink: 0 }} />
+            <EditIcon sx={{ fontSize: 14, color: '#d0d0d0', flexShrink: 0 }} />
           </Stack>
         );
       })}
@@ -386,11 +379,10 @@ function StudentRow({ student, index, onSave, onDelete, teams, guests, presenter
 }
 
 // ── Category accordion ────────────────────────────────────────────────────────
-function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCategoryDelete, teams, guests, presenterCounts, extraTeams, extraGuests, onAddExtra, allDbStudents }) {
+function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCategoryDelete, teams, guests, presenterCounts, extraTeams, extraGuests, onAddExtra, allDbStudents, onAddStudentClick }) {
   const catRef = useRef(cat);
   useEffect(() => { catRef.current = cat; }, [cat]);
 
-  const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [editTitleOpen, setEditTitleOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(cat.title);
   const autoImportDone = useRef(false);
@@ -407,7 +399,6 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
     const cur = catRef.current;
     const curNames = new Set((cur.students || []).map(s => s.name.toLowerCase().trim()));
 
-    // Match DB students to this category by title
     const matched = allDbStudents.filter(s => {
       const dbCatTitle = s.categoryId?.title || s.categoryName || s.categoryOther || '';
       return catTitleMatch(cur.title, dbCatTitle);
@@ -441,56 +432,43 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
       .map((s, i) => ({ ...s, order: i + 1 })) });
   }
 
-  function addStudent(data) {
-    const cur = catRef.current;
-    onCategoryUpdate({ ...cur, students: [...(cur.students || []), {
-      ...data, presenters: [], order: (cur.students?.length || 0) + 1, status: 'live',
-    }]});
-  }
-
   const isDone = (cat.status || 'live') === 'done';
   const students = (cat.students || []).slice().sort((a, b) => a.order - b.order);
 
   return (
-    <Box sx={{ mb: 1, border: '1px solid', borderColor: isDone ? '#388e3c' : '#334155' }}>
+    <Box sx={{ mb: 0.75, border: '1px solid', borderColor: isDone ? '#388e3c' : '#cfd8dc' }}>
       {/* Category header */}
       <Stack direction="row" alignItems="center"
-        sx={{ px: 1.5, py: 1.5, bgcolor: isDone ? DONE_BG : NAVY, color: 'white', cursor: 'pointer' }}
+        sx={{ px: 1.25, py: 0.75, bgcolor: isDone ? DONE_BG : NAVY, color: 'white', cursor: 'pointer' }}
         onClick={onToggle}>
-        <ExpandMoreIcon sx={{ mr: 1.5, fontSize: 26, transition: 'transform 0.2s',
+        <ExpandMoreIcon sx={{ mr: 1, fontSize: 24, transition: 'transform 0.2s',
           transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }} />
-        <Typography fontWeight={900} fontSize={17} sx={{ flex: 1, lineHeight: 1.3 }}>{cat.title}</Typography>
-        <Box sx={{ fontSize: 13, fontWeight: 800, bgcolor: 'rgba(255,255,255,0.2)',
-          px: 1, py: 0.25, mr: 1, flexShrink: 0 }}>
+        <Typography fontWeight={900} fontSize={14} sx={{ flex: 1, lineHeight: 1.2 }}>{cat.title}</Typography>
+        <Box sx={{ fontSize: 11, fontWeight: 800, bgcolor: 'rgba(255,255,255,0.2)',
+          px: 0.75, py: 0.1, mr: 0.5, flexShrink: 0 }}>
           {students.length}
         </Box>
         <IconButton size="small" onClick={e => { e.stopPropagation(); onCategoryUpdate({ ...cat, status: isDone ? 'live' : 'done' }); }}
-          sx={{ color: isDone ? '#a5d6a7' : 'rgba(255,255,255,0.6)', p: 0.5 }}>
-          {isDone ? <CheckCircleIcon sx={{ fontSize: 24 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 24 }} />}
+          sx={{ color: isDone ? '#a5d6a7' : 'rgba(255,255,255,0.5)', p: 0.4 }}>
+          {isDone ? <CheckCircleIcon sx={{ fontSize: 20 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 20 }} />}
         </IconButton>
         <IconButton size="small"
           onClick={e => { e.stopPropagation(); setEditTitle(cat.title); setEditTitleOpen(true); }}
-          sx={{ color: 'rgba(255,255,255,0.7)', p: 0.5 }}>
-          <EditIcon sx={{ fontSize: 22 }} />
+          sx={{ color: 'rgba(255,255,255,0.65)', p: 0.4 }}>
+          <EditIcon sx={{ fontSize: 20 }} />
         </IconButton>
         <IconButton size="small" onClick={e => { e.stopPropagation(); onCategoryDelete(cat); }}
-          sx={{ color: '#ef9a9a', p: 0.5 }}>
-          <DeleteIcon sx={{ fontSize: 22 }} />
+          sx={{ color: '#ef9a9a', p: 0.4 }}>
+          <DeleteIcon sx={{ fontSize: 20 }} />
         </IconButton>
       </Stack>
 
       {/* Expanded body */}
       {expanded && (
         <Box>
-          <Stack direction="row" sx={{ px: 1.5, py: 0.5, bgcolor: '#eceff1', borderBottom: '1px solid #cfd8dc' }}>
-            <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ minWidth: 24 }}>#</Typography>
-            <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ flex: 1 }}>STUDENT</Typography>
-            <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ mr: 4 }}>PRESENTERS (1–4)</Typography>
-          </Stack>
-
           {students.length === 0 && (
-            <Typography fontSize={14} color="text.secondary"
-              sx={{ p: 2, textAlign: 'center', fontStyle: 'italic' }}>
+            <Typography fontSize={12} color="text.secondary"
+              sx={{ px: 2, py: 1.5, textAlign: 'center', fontStyle: 'italic' }}>
               No students yet — auto-importing from DB…
             </Typography>
           )}
@@ -504,23 +482,12 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
               extraTeams={extraTeams} extraGuests={extraGuests} onAddExtra={onAddExtra}
             />
           ))}
-
-          <Box sx={{ px: 1.5, py: 1, bgcolor: '#fafafa', borderTop: '1px solid #e0e0e0' }}>
-            <Button size="small" startIcon={<AddIcon />} onClick={() => setStudentPickerOpen(true)}
-              sx={{ borderRadius: 0, fontSize: 13 }}>
-              Add Student
-            </Button>
-          </Box>
         </Box>
       )}
 
-      <StudentPicker open={studentPickerOpen} onClose={() => setStudentPickerOpen(false)}
-        catTitle={cat.title} existingNames={existingNames}
-        allDbStudents={allDbStudents} onAdd={addStudent} />
-
       <Dialog open={editTitleOpen} onClose={() => setEditTitleOpen(false)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { borderRadius: 0 } }}>
-        <DialogTitle>Edit Category Title</DialogTitle>
+        <DialogTitle sx={{ py: 1.5, fontSize: 15 }}>Edit Category Title</DialogTitle>
         <DialogContent>
           <TextField autoFocus fullWidth size="small" label="Title" value={editTitle}
             onChange={e => setEditTitle(e.target.value)}
@@ -528,8 +495,8 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
             InputProps={{ sx: { borderRadius: 0 } }} sx={{ mt: 1 }} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditTitleOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
-          <Button variant="contained" sx={{ borderRadius: 0 }} disabled={!editTitle.trim()}
+          <Button size="small" onClick={() => setEditTitleOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
+          <Button size="small" variant="contained" sx={{ borderRadius: 0 }} disabled={!editTitle.trim()}
             onClick={() => { onCategoryUpdate({ ...cat, title: editTitle }); setEditTitleOpen(false); }}>Save</Button>
         </DialogActions>
       </Dialog>
@@ -631,6 +598,8 @@ function AgendaPage() {
   const [newCatTitle, setNewCatTitle] = useState('');
   const [dbCategories, setDbCategories] = useState([]);
   const [loadingDbCats, setLoadingDbCats] = useState(false);
+  const [studentPickerCat, setStudentPickerCat] = useState(null); // cat object for the picker
+  const [loadingAll, setLoadingAll] = useState(false);
 
   const presenterCounts = useMemo(() => {
     const counts = {};
@@ -656,7 +625,6 @@ function AgendaPage() {
       setCategories(data);
     } catch (e) { setError(e.message); setLoading(false); return; }
 
-    // Users (teams/guests)
     try {
       const r = await fetch(`${API}/api/users`, { headers: authHeader() });
       const d = await safeJson(r);
@@ -665,7 +633,6 @@ function AgendaPage() {
       setGuests(ul.filter(u => u.eventDutyType === 'GUEST').map(u => u.name).filter(Boolean));
     } catch { /* optional */ }
 
-    // All students — categoryId is populated, so we filter client-side per category
     try {
       const r = await fetch(`${API}/api/students`, { headers: authHeader() });
       const d = await safeJson(r);
@@ -677,6 +644,42 @@ function AgendaPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load all approved students into all categories at once
+  async function loadAllCategories() {
+    if (!allDbStudents.length || !categories.length) return;
+    setLoadingAll(true);
+    const updates = [];
+    for (const cat of categories) {
+      const curNames = new Set((cat.students || []).map(s => s.name.toLowerCase().trim()));
+      const matched = allDbStudents.filter(s => {
+        const dbCatTitle = s.categoryId?.title || s.categoryName || s.categoryOther || '';
+        return catTitleMatch(cat.title, dbCatTitle);
+      });
+      const toAdd = matched.filter(s => !curNames.has(sName(s).toLowerCase()));
+      if (!toAdd.length) continue;
+      const startOrder = (cat.students?.length || 0) + 1;
+      const updated = { ...cat, students: [
+        ...(cat.students || []),
+        ...toAdd.map((s, i) => ({
+          name: sName(s),
+          percentage: s.percentage ? `${s.percentage}%` : '',
+          extra: '', presenters: [], order: startOrder + i, status: 'live',
+        })),
+      ]};
+      updates.push(updated);
+    }
+    for (const updated of updates) {
+      try {
+        const res = await fetch(`${API}/api/agenda/${updated._id}`, {
+          method: 'PATCH', headers: authHeader(), body: JSON.stringify(updated),
+        });
+        const saved = await safeJson(res);
+        if (res.ok) setCategories(prev => prev.map(c => c._id === saved._id ? saved : c));
+      } catch { /* skip */ }
+    }
+    setLoadingAll(false);
+  }
 
   async function seed() {
     setSeeding(true);
@@ -738,6 +741,15 @@ function AgendaPage() {
     } catch (e) { setError(e.message); }
   }
 
+  function addStudentToCategory(cat) {
+    return (data) => {
+      const updated = { ...cat, students: [...(cat.students || []), {
+        ...data, presenters: [], order: (cat.students?.length || 0) + 1, status: 'live',
+      }]};
+      updateCategory(updated);
+    };
+  }
+
   const filteredDbCats = dbCategories.filter(c =>
     !newCatTitle || (c.name || c.title || '').toLowerCase().includes(newCatTitle.toLowerCase())
   );
@@ -752,54 +764,75 @@ function AgendaPage() {
         subtitle={`${liveCats.length} live · ${doneCats.length} done · ${categories.reduce((s,c) => s+(c.students?.length||0), 0)} students`}
       />
       <PageSurface>
+        {/* Tabs */}
         <Tabs value={tab} onChange={(_, v) => setTab(v)}
-          sx={{ mb: 1.5, '& .MuiTab-root': { fontWeight: 800, borderRadius: 0, minHeight: 44, fontSize: 15 } }}>
+          sx={{ mb: 1, borderBottom: '1px solid #e0e0e0',
+            '& .MuiTab-root': { fontWeight: 700, borderRadius: 0, minHeight: 36, fontSize: 13, py: 0.5, px: 2 } }}>
           <Tab value="live" label={
-            <Stack direction="row" spacing={0.75} alignItems="center">
+            <Stack direction="row" spacing={0.5} alignItems="center">
               <span>Live</span>
-              <Box sx={{ bgcolor: '#1976d2', color: 'white', fontSize: 12, fontWeight: 900,
-                minWidth: 22, height: 22, borderRadius: 0, px: 0.6,
+              <Box sx={{ bgcolor: '#1976d2', color: 'white', fontSize: 11, fontWeight: 900,
+                minWidth: 20, height: 20, borderRadius: 0, px: 0.5,
                 display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{liveCats.length}</Box>
             </Stack>
           } />
           <Tab value="done" label={
-            <Stack direction="row" spacing={0.75} alignItems="center">
+            <Stack direction="row" spacing={0.5} alignItems="center">
               <span>Done</span>
-              <Box sx={{ bgcolor: DONE_BG, color: 'white', fontSize: 12, fontWeight: 900,
-                minWidth: 22, height: 22, borderRadius: 0, px: 0.6,
+              <Box sx={{ bgcolor: DONE_BG, color: 'white', fontSize: 11, fontWeight: 900,
+                minWidth: 20, height: 20, borderRadius: 0, px: 0.5,
                 display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{doneCats.length}</Box>
             </Stack>
           } />
         </Tabs>
 
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
-          <Button variant="outlined" startIcon={<RefreshIcon />} onClick={load} disabled={loading} sx={{ borderRadius: 0 }}>
-            Refresh
-          </Button>
-          {categories.length === 0 && !loading && (
-            <Button variant="contained" color="secondary" onClick={seed} disabled={seeding} sx={{ borderRadius: 0 }}
-              startIcon={seeding ? <CircularProgress size={16} color="inherit" /> : null}>
-              {seeding ? 'Seeding…' : '🌱 Load Default Data'}
+        {/* Action toolbar — single scrollable row */}
+        <Box sx={{ overflowX: 'auto', mb: 1 }}>
+          <Stack direction="row" spacing={0.75} sx={{ pb: 0.5, minWidth: 'max-content' }}>
+            <Button size="small" variant="outlined" startIcon={<RefreshIcon sx={{ fontSize: 15 }} />}
+              onClick={load} disabled={loading}
+              sx={{ borderRadius: 0, fontSize: 12, py: 0.4, px: 1.25, borderColor: '#9e9e9e', color: '#555' }}>
+              Refresh
             </Button>
-          )}
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddCat} sx={{ borderRadius: 0 }}>
-            Add Category
-          </Button>
-          <Button variant="contained" color="success" startIcon={<DownloadIcon />} sx={{ borderRadius: 0 }}
-            onClick={() => { try { exportToPDF(liveCats); } catch(e) { setError(e.message); } }}
-            disabled={liveCats.length === 0}>
-            Export PDF
-          </Button>
-        </Stack>
+            <Button size="small" variant="outlined" startIcon={<SyncIcon sx={{ fontSize: 15 }} />}
+              onClick={loadAllCategories} disabled={loadingAll || loading || !allDbStudents.length}
+              sx={{ borderRadius: 0, fontSize: 12, py: 0.4, px: 1.25, borderColor: '#9e9e9e', color: '#555' }}>
+              {loadingAll ? 'Loading…' : 'Load All'}
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<AddIcon sx={{ fontSize: 15 }} />}
+              onClick={openAddCat}
+              sx={{ borderRadius: 0, fontSize: 12, py: 0.4, px: 1.25, borderColor: '#9e9e9e', color: '#555' }}>
+              Add Category
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<OpenInNewIcon sx={{ fontSize: 15 }} />}
+              onClick={() => window.open('/student-register', '_blank')}
+              sx={{ borderRadius: 0, fontSize: 12, py: 0.4, px: 1.25, borderColor: '#9e9e9e', color: '#555' }}>
+              Add Students
+            </Button>
+            <Button size="small" variant="contained" color="success" startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+              onClick={() => { try { exportToPDF(liveCats); } catch(e) { setError(e.message); } }}
+              disabled={liveCats.length === 0}
+              sx={{ borderRadius: 0, fontSize: 12, py: 0.4, px: 1.25 }}>
+              Export PDF
+            </Button>
+            {categories.length === 0 && !loading && (
+              <Button size="small" variant="contained" color="secondary" onClick={seed} disabled={seeding}
+                sx={{ borderRadius: 0, fontSize: 12, py: 0.4, px: 1.25 }}
+                startIcon={seeding ? <CircularProgress size={13} color="inherit" /> : null}>
+                {seeding ? 'Seeding…' : '🌱 Load Default'}
+              </Button>
+            )}
+          </Stack>
+        </Box>
 
-        {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 0 }} onClose={() => setError('')}>{error}</Alert>}
-        {(loading || saving) && <LinearProgress sx={{ mb: 2 }} color={saving ? 'success' : 'primary'} />}
+        {error && <Alert severity="error" sx={{ mb: 1.5, borderRadius: 0, py: 0.5 }} onClose={() => setError('')}>{error}</Alert>}
+        {(loading || saving) && <LinearProgress sx={{ mb: 1 }} color={saving ? 'success' : 'primary'} />}
 
         {!loading && visibleCats.length === 0 && (
-          <Alert severity="info" sx={{ borderRadius: 0 }}>
+          <Alert severity="info" sx={{ borderRadius: 0, py: 0.5, fontSize: 13 }}>
             {tab === 'live'
               ? categories.length === 0
-                ? <>No categories. Click <strong>Load Default Data</strong> or Add Category.</>
+                ? <>No categories. Click <strong>Load Default</strong> or Add Category.</>
                 : 'All categories are marked done.'
               : 'No done categories yet.'}
           </Alert>
@@ -813,30 +846,44 @@ function AgendaPage() {
             teams={teams} guests={guests} presenterCounts={presenterCounts}
             extraTeams={extraTeams} extraGuests={extraGuests} onAddExtra={handleAddExtra}
             allDbStudents={allDbStudents}
+            onAddStudentClick={() => setStudentPickerCat(cat)}
           />
         ))}
 
+        {/* Student picker driven from toolbar "Add Students" per-category via expand */}
+        {studentPickerCat && (
+          <StudentPicker
+            open={!!studentPickerCat}
+            onClose={() => setStudentPickerCat(null)}
+            catTitle={studentPickerCat.title}
+            existingNames={new Set((studentPickerCat.students||[]).map(s => s.name.toLowerCase().trim()))}
+            allDbStudents={allDbStudents}
+            onAdd={addStudentToCategory(studentPickerCat)}
+          />
+        )}
+
+        {/* Add category dialog */}
         <Dialog open={addCatOpen} onClose={() => setAddCatOpen(false)} maxWidth="xs" fullWidth
           PaperProps={{ sx: { borderRadius: 0 } }}>
-          <DialogTitle>Add Category</DialogTitle>
+          <DialogTitle sx={{ py: 1.5, fontSize: 15 }}>Add Category</DialogTitle>
           <DialogContent>
-            <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Stack spacing={1.25} sx={{ mt: 0.5 }}>
               <TextField autoFocus fullWidth size="small" label="Search or type category name"
                 value={newCatTitle} onChange={e => setNewCatTitle(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addCategory()}
                 InputProps={{
                   startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
-                  endAdornment: loadingDbCats ? <CircularProgress size={16} /> : null,
+                  endAdornment: loadingDbCats ? <CircularProgress size={14} /> : null,
                   sx: { borderRadius: 0 },
                 }}
               />
               {filteredDbCats.length > 0 && (
-                <Box sx={{ border: '1px solid #e0e0e0', maxHeight: 220, overflowY: 'auto' }}>
+                <Box sx={{ border: '1px solid #e0e0e0', maxHeight: 200, overflowY: 'auto', bgcolor: '#fafafa' }}>
                   {filteredDbCats.slice(0, 20).map(c => (
                     <Box key={c._id} onClick={() => setNewCatTitle(c.name || c.title)}
-                      sx={{ px: 2, py: 1, cursor: 'pointer', borderBottom: '1px solid #f0f0f0',
-                        '&:hover': { bgcolor: 'action.hover' } }}>
-                      <Typography fontSize={15}>{c.name || c.title}</Typography>
+                      sx={{ px: 2, py: 0.9, cursor: 'pointer', borderBottom: '1px solid #eeeeee',
+                        '&:hover': { bgcolor: '#f0f0f0' } }}>
+                      <Typography fontSize={13}>{c.name || c.title}</Typography>
                     </Box>
                   ))}
                 </Box>
@@ -847,8 +894,8 @@ function AgendaPage() {
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setAddCatOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
-            <Button variant="contained" onClick={addCategory} disabled={!newCatTitle.trim()}
+            <Button size="small" onClick={() => setAddCatOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
+            <Button size="small" variant="contained" onClick={addCategory} disabled={!newCatTitle.trim()}
               sx={{ borderRadius: 0 }}>Add</Button>
           </DialogActions>
         </Dialog>
