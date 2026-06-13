@@ -1482,6 +1482,18 @@ function ManualInvitePanel() {
 
   const handleAccordion = (panel) => (_, isOpen) => setExpanded(isOpen ? panel : false);
 
+  // ── Persist sentSet to localStorage (keyed by campaign ID) ─────────────────
+  useEffect(() => {
+    if (!savedCampaignId) return;
+    const stored = localStorage.getItem(`wa_sent_${savedCampaignId}`);
+    if (stored) { try { setSentSet(new Set(JSON.parse(stored))); } catch { /* ignore */ } }
+  }, [savedCampaignId]);
+
+  useEffect(() => {
+    if (!savedCampaignId) return;
+    localStorage.setItem(`wa_sent_${savedCampaignId}`, JSON.stringify([...sentSet]));
+  }, [sentSet, savedCampaignId]);
+
   // ── Load image ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!imageUrl) { setImageLoaded(false); imageElRef.current = null; return; }
@@ -1806,7 +1818,7 @@ function ManualInvitePanel() {
                   </Button>
                   {sentSet.size > 0 && (
                     <Button size="small" variant="text" color="warning"
-                      onClick={() => setSentSet(new Set())}>
+                      onClick={() => { setSentSet(new Set()); if (savedCampaignId) localStorage.removeItem(`wa_sent_${savedCampaignId}`); }}>
                       Reset
                     </Button>
                   )}
@@ -1926,6 +1938,19 @@ function ManualCampaignsPanel() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Persist sentSet per campaign to localStorage ────────────────────────────
+  useEffect(() => {
+    if (!selected?._id) { setSentSet(new Set()); return; }
+    const stored = localStorage.getItem(`wa_sent_${selected._id}`);
+    if (stored) { try { setSentSet(new Set(JSON.parse(stored))); } catch { setSentSet(new Set()); } }
+    else { setSentSet(new Set()); }
+  }, [selected?._id]);
+
+  useEffect(() => {
+    if (!selected?._id) return;
+    localStorage.setItem(`wa_sent_${selected._id}`, JSON.stringify([...sentSet]));
+  }, [sentSet, selected?._id]);
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this saved campaign?')) return;
@@ -2120,7 +2145,7 @@ function ManualCampaignsPanel() {
               <Button size="small" variant={linkTab === 'sent' ? 'contained' : 'outlined'}
                 color={linkTab === 'sent' ? 'success' : 'inherit'}
                 onClick={() => setLinkTab('sent')}>✅ Sent ({sentSet.size})</Button>
-              {sentSet.size > 0 && <Button size="small" variant="text" color="warning" onClick={() => setSentSet(new Set())}>Reset</Button>}
+              {sentSet.size > 0 && <Button size="small" variant="text" color="warning" onClick={() => { setSentSet(new Set()); if (selected?._id) localStorage.removeItem(`wa_sent_${selected._id}`); }}>Reset</Button>}
             </Stack>
             <Stack spacing={1}>
               {recs.filter((_, i) => linkTab === 'tosend' ? !sentSet.has(i) : sentSet.has(i)).length === 0 && (
