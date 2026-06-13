@@ -505,7 +505,7 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
 }
 
 // ── PDF Export ────────────────────────────────────────────────────────────────
-function exportToPDF(categories) {
+async function exportToPDF(categories) {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' });
   const W = 210, H = 297, MX = 12, MY = 14;
   const C = { sx: MX, sw: 13, nx: MX+13, nw: 57, px: MX+70, pw: 24, rx: MX+94, rw: W-MX-MX-94 };
@@ -576,7 +576,23 @@ function exportToPDF(categories) {
     doc.text(`Page ${pg} of ${total}`, W/2, H-5, { align: 'center' });
     doc.text('BK Scholar Awards', MX, H-5);
   }
-  doc.save('BK_Awards_Agenda.pdf');
+  // On Capacitor Android, doc.save() doesn't work — use Web Share API instead
+  const isNative = !!(window.Capacitor?.isNativePlatform?.());
+  if (isNative) {
+    try {
+      const blob = doc.output('blob');
+      const file = new File([blob], 'BK_Awards_Agenda.pdf', { type: 'application/pdf' });
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'BK Awards Agenda' });
+        return;
+      }
+    } catch { /* fall through to data URI */ }
+    // Fallback: open as data URI in new tab
+    const uri = doc.output('datauristring');
+    window.open(uri, '_blank');
+  } else {
+    doc.save('BK_Awards_Agenda.pdf');
+  }
 }
 
 // ── Main AgendaPage ───────────────────────────────────────────────────────────
@@ -810,7 +826,7 @@ function AgendaPage() {
               Add Students
             </Button>
             <Button size="small" variant="contained" color="success" startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={() => { try { exportToPDF(liveCats); } catch(e) { setError(e.message); } }}
+              onClick={() => exportToPDF(liveCats).catch(e => setError(e.message))}
               disabled={liveCats.length === 0}
               sx={{ borderRadius: 0, fontSize: 12, py: 0.4, px: 1.25 }}>
               Export PDF
