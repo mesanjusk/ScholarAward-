@@ -1,7 +1,7 @@
-import { Component, useCallback, useEffect, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Autocomplete, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Dialog, DialogActions, DialogContent, DialogTitle,
+  Alert, Autocomplete, Badge, Box, Button, Card, CardContent, Checkbox, Chip,
+  CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, LinearProgress, Stack, TextField, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -34,55 +34,127 @@ const PRESENTER_ROWS = [
   { row: 4, label: 'Special Guest 2',      source: 'guest', color: '#c62828' },
 ];
 
-// ── Single presenter slot — MUI Autocomplete ──────────────────────────────────
-function PresenterSlot({ label, options, value, onChange }) {
+// ── Single presenter row — multi-select with checkboxes + count badge ─────────
+function PresenterRow({ rowDef, selected, onChange, options, presenterCounts, extraOptions, onAddExtra }) {
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  const allOptions = useMemo(() => {
+    const merged = [...options, ...(extraOptions || [])];
+    return [...new Set(merged)].filter(Boolean);
+  }, [options, extraOptions]);
+
+  function handleAdd() {
+    const name = newName.trim();
+    if (!name) return;
+    onAddExtra(name);
+    if (!selected.includes(name)) onChange([...selected, name]);
+    setNewName('');
+    setAddOpen(false);
+  }
+
   return (
-    <Autocomplete
-      freeSolo
-      size="small"
-      options={options}
-      value={value || null}
-      onChange={(_, v) => onChange(typeof v === 'string' ? v : v || '')}
-      onInputChange={(_, v, reason) => { if (reason === 'input') onChange(v); }}
-      renderInput={(params) => (
-        <TextField {...params} placeholder={label}
-          sx={{ '& .MuiInputBase-input': { fontSize: 13 } }} />
+    <Box sx={{ mb: 1 }}>
+      <Typography variant="caption" sx={{ color: rowDef.color, fontWeight: 700, fontSize: 10, display: 'block', mb: 0.25 }}>
+        {rowDef.row}. {rowDef.label}
+      </Typography>
+      <Stack direction="row" alignItems="flex-start" spacing={0.5}>
+        <Autocomplete
+          multiple
+          disableCloseOnSelect
+          size="small"
+          options={allOptions}
+          value={selected}
+          onChange={(_, v) => onChange(v)}
+          renderOption={(props, option, { selected: isSel }) => {
+            const count = presenterCounts[option] || 0;
+            return (
+              <li {...props} key={option}>
+                <Checkbox size="small" checked={isSel} sx={{ p: 0.5, mr: 0.5 }} />
+                <Typography variant="body2" sx={{ flex: 1 }}>{option}</Typography>
+                {count > 0 && (
+                  <Badge badgeContent={count} color="primary"
+                    sx={{ mr: 2, '& .MuiBadge-badge': { fontSize: 10, minWidth: 18, height: 18 } }} />
+                )}
+              </li>
+            );
+          }}
+          renderTags={() => null}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              placeholder={selected.length ? `${selected.length} selected` : 'Select names…'}
+              size="small"
+              sx={{ '& .MuiInputBase-input': { fontSize: 13 } }}
+            />
+          )}
+          ListboxProps={{ sx: { maxHeight: 320 } }}
+          sx={{ flex: 1 }}
+        />
+        <IconButton size="small" onClick={() => { setNewName(''); setAddOpen(true); }}
+          title="Add new name" sx={{ mt: 0.25 }}>
+          <AddIcon fontSize="small" />
+        </IconButton>
+      </Stack>
+
+      {selected.length > 0 && (
+        <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5, pl: 0.25 }}>
+          {selected.map(name => (
+            <Chip key={name} label={name} size="small"
+              onDelete={() => onChange(selected.filter(n => n !== name))}
+              sx={{ fontSize: 11, height: 22 }} />
+          ))}
+        </Stack>
       )}
-      sx={{ flex: 1 }}
-    />
+
+      {/* Add new name dialog */}
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>Add New — {rowDef.label}</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth size="small" label="Name" value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            sx={{ mt: 1 }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleAdd} disabled={!newName.trim()}>Add</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
 
-// ── Student card with 4 presenter rows × 2 slots ──────────────────────────────
-function StudentCard({ student, onSave, onDelete, teams, guests }) {
-  function buildGrid(presenters) {
-    const g = {};
+// ── Student card with 4 presenter rows, each multi-select ─────────────────────
+function StudentCard({ student, onSave, onDelete, teams, guests, presenterCounts, extraTeams, extraGuests, onAddExtra }) {
+  // Build initial per-row selection from presenter array
+  function buildSelected(presenters) {
+    const byRow = { 1: [], 2: [], 3: [], 4: [] };
     (presenters || []).forEach(p => {
-      if (!g[p.row]) g[p.row] = {};
-      g[p.row][p.slot] = p.name || '';
+      if (p.name && byRow[p.row] && !byRow[p.row].includes(p.name))
+        byRow[p.row].push(p.name);
     });
-    return g;
+    return byRow;
   }
 
-  const [grid, setGrid] = useState(() => buildGrid(student.presenters));
+  const [rowSel, setRowSel] = useState(() => buildSelected(student.presenters));
   const [saving, setSaving] = useState(false);
 
-  function flattenGrid(g) {
+  function flattenSelected(sel) {
     const result = [];
     [1, 2, 3, 4].forEach(row => {
-      [1, 2].forEach(slot => {
-        const name = (g[row]?.[slot] || '').trim();
-        if (name) result.push({ name, row, slot });
+      (sel[row] || []).forEach((name, idx) => {
+        result.push({ name, row, slot: idx + 1 });
       });
     });
     return result;
   }
 
-  async function handleChange(row, slot, name) {
-    const newGrid = { ...grid, [row]: { ...(grid[row] || {}), [slot]: name } };
-    setGrid(newGrid);
+  async function handleRowChange(row, names) {
+    const newSel = { ...rowSel, [row]: names };
+    setRowSel(newSel);
     setSaving(true);
-    try { await onSave({ ...student, presenters: flattenGrid(newGrid) }); }
+    try { await onSave({ ...student, presenters: flattenSelected(newSel) }); }
     finally { setSaving(false); }
   }
 
@@ -98,32 +170,20 @@ function StudentCard({ student, onSave, onDelete, teams, guests }) {
               {saving && <CircularProgress size={12} />}
             </Stack>
 
-            {PRESENTER_ROWS.map(({ row, label, source, color }) => {
-              const opts = source === 'team' ? teams : guests;
-              return (
-                <Box key={row} sx={{ mb: 0.5 }}>
-                  <Typography variant="caption" sx={{ color, fontWeight: 700, fontSize: 10 }}>
-                    {row}. {label}
-                  </Typography>
-                  <Stack direction="row" spacing={0.5} sx={{ mt: 0.25 }}>
-                    <PresenterSlot
-                      label="Name 1"
-                      options={opts}
-                      value={grid[row]?.[1] || ''}
-                      onChange={name => handleChange(row, 1, name)}
-                    />
-                    <PresenterSlot
-                      label="Name 2 (optional)"
-                      options={opts}
-                      value={grid[row]?.[2] || ''}
-                      onChange={name => handleChange(row, 2, name)}
-                    />
-                  </Stack>
-                </Box>
-              );
-            })}
+            {PRESENTER_ROWS.map(rowDef => (
+              <PresenterRow
+                key={rowDef.row}
+                rowDef={rowDef}
+                selected={rowSel[rowDef.row] || []}
+                onChange={names => handleRowChange(rowDef.row, names)}
+                options={rowDef.source === 'team' ? teams : guests}
+                presenterCounts={presenterCounts}
+                extraOptions={rowDef.source === 'team' ? extraTeams : extraGuests}
+                onAddExtra={name => onAddExtra(rowDef.source, name)}
+              />
+            ))}
           </Box>
-          <IconButton size="small" color="error" onClick={() => onDelete(student)}>
+          <IconButton size="small" color="error" onClick={() => onDelete(student)} sx={{ mt: 0.5 }}>
             <DeleteIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -133,7 +193,7 @@ function StudentCard({ student, onSave, onDelete, teams, guests }) {
 }
 
 // ── Category section ──────────────────────────────────────────────────────────
-function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudents, teams, guests }) {
+function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudents, teams, guests, presenterCounts, extraTeams, extraGuests, onAddExtra }) {
   const [addOpen, setAddOpen] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -145,20 +205,11 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
   const [catStudents, setCatStudents] = useState([]);
   const [loadingCatStudents, setLoadingCatStudents] = useState(false);
 
-  // Students from DB filtered to this category (by name match since agenda has string names)
   const existingNames = new Set((cat.students || []).map(s => s.name.toLowerCase().trim()));
   const filteredDbStudents = allDbStudents.filter(s => {
     const name = (s.fullName || `${s.firstName} ${s.lastName}`).toLowerCase();
     return !studentSearch || name.includes(studentSearch.toLowerCase());
   });
-
-  function openAdd() {
-    setAddOpen(true);
-    setStudentSearch('');
-    setSelectedStudent(null);
-    setAddPct('');
-    setAddExtra('');
-  }
 
   function pickStudent(s) {
     setSelectedStudent(s);
@@ -184,7 +235,6 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
     setImportOpen(true);
     setLoadingCatStudents(true);
     try {
-      // Find category ID from DB categories by title match
       const res = await fetch(`${API}/api/categories`, { headers: authHeader() });
       const cats = await safeJson(res);
       const matched = (Array.isArray(cats) ? cats : []).find(c =>
@@ -194,8 +244,7 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
       if (matched) {
         const sRes = await fetch(`${API}/api/students?categoryId=${matched._id}&limit=200`, { headers: authHeader() });
         const sData = await safeJson(sRes);
-        const list = Array.isArray(sData) ? sData : sData.students || sData.data || [];
-        setCatStudents(list);
+        setCatStudents(Array.isArray(sData) ? sData : sData.students || sData.data || []);
       } else {
         setCatStudents([]);
       }
@@ -257,11 +306,15 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
         {(cat.students || []).slice().sort((a, b) => a.order - b.order).map((s, i) => (
           <StudentCard key={`${s.name}-${i}`} student={s}
             onSave={saveStudentPresenter} onDelete={deleteStudent}
-            teams={teams} guests={guests} />
+            teams={teams} guests={guests}
+            presenterCounts={presenterCounts}
+            extraTeams={extraTeams} extraGuests={extraGuests} onAddExtra={onAddExtra}
+          />
         ))}
 
         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-          <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={openAdd}>
+          <Button size="small" variant="outlined" startIcon={<AddIcon />}
+            onClick={() => { setAddOpen(true); setStudentSearch(''); setSelectedStudent(null); setAddPct(''); setAddExtra(''); }}>
             Add Student
           </Button>
           <Button size="small" variant="text" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
@@ -277,13 +330,13 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <TextField autoFocus label="Search student from DB" fullWidth size="small"
-              value={studentSearch} onChange={e => { setStudentSearch(e.target.value); setSelectedStudent(null); }} />
+              value={studentSearch}
+              onChange={e => { setStudentSearch(e.target.value); setSelectedStudent(null); }} />
             {studentSearch.length > 0 && !selectedStudent && (
-              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 180, overflowY: 'auto' }}>
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 200, overflowY: 'auto' }}>
                 {filteredDbStudents.length === 0
                   ? <Typography variant="caption" sx={{ p: 1, display: 'block', color: 'text.secondary' }}>
-                      No DB match — will be added as typed.{' '}
-                      <strong style={{ cursor: 'pointer' }} onClick={() => {}}>+ Add new</strong>
+                      Not in DB — will be added as typed.
                     </Typography>
                   : filteredDbStudents.slice(0, 20).map(s => (
                     <Box key={s._id} onClick={() => pickStudent(s)}
@@ -309,7 +362,7 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
         </DialogActions>
       </Dialog>
 
-      {/* Import from DB category Dialog */}
+      {/* Import from DB Dialog */}
       <Dialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Import Students from DB — {cat.title}</DialogTitle>
         <DialogContent>
@@ -317,13 +370,9 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
             ? <LinearProgress sx={{ mt: 2 }} />
             : catStudents.length === 0
               ? <Alert severity="info" sx={{ mt: 1 }}>
-                  No students found in DB for this category name. Make sure the category title matches exactly.
+                  No students found in DB for this category name.
                 </Alert>
-              : <ImportStudentList
-                  students={catStudents}
-                  existingNames={existingNames}
-                  onImport={importStudents}
-                />
+              : <ImportStudentList students={catStudents} existingNames={existingNames} onImport={importStudents} />
           }
         </DialogContent>
         <DialogActions>
@@ -351,16 +400,12 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
 // ── Import student checklist ──────────────────────────────────────────────────
 function ImportStudentList({ students, existingNames, onImport }) {
   const [checked, setChecked] = useState(() =>
-    students.map(s => {
-      const name = (s.fullName || `${s.firstName} ${s.lastName}`).trim().toLowerCase();
-      return !existingNames.has(name); // pre-check new ones
-    })
+    students.map(s => !existingNames.has((s.fullName || `${s.firstName} ${s.lastName}`).trim().toLowerCase()))
   );
-
   function toggle(i) { setChecked(prev => prev.map((v, j) => j === i ? !v : v)); }
 
   return (
-    <Stack spacing={0} sx={{ mt: 1 }}>
+    <Stack sx={{ mt: 1 }}>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>
         {students.length} students found. Already-added ones are unchecked.
       </Typography>
@@ -371,14 +416,10 @@ function ImportStudentList({ students, existingNames, onImport }) {
           <Box key={s._id} onClick={() => toggle(i)}
             sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.5, cursor: 'pointer',
               borderRadius: 1, opacity: already ? 0.5 : 1, '&:hover': { bgcolor: 'action.hover' } }}>
-            <Box sx={{ width: 18, height: 18, border: '2px solid', borderColor: checked[i] ? 'primary.main' : 'divider',
-              borderRadius: 0.5, bgcolor: checked[i] ? 'primary.main' : 'transparent', flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {checked[i] && <Box sx={{ width: 10, height: 10, bgcolor: 'white', borderRadius: 0.25 }} />}
-            </Box>
-            <Typography variant="body2">{name}</Typography>
-            {s.percentage ? <Chip label={`${s.percentage}%`} size="small" variant="outlined" sx={{ ml: 'auto' }} /> : null}
-            {already && <Chip label="already added" size="small" color="default" sx={{ ml: 'auto' }} />}
+            <Checkbox size="small" checked={checked[i]} onChange={() => toggle(i)} sx={{ p: 0 }} />
+            <Typography variant="body2" sx={{ flex: 1 }}>{name}</Typography>
+            {s.percentage ? <Chip label={`${s.percentage}%`} size="small" variant="outlined" /> : null}
+            {already && <Chip label="already added" size="small" />}
           </Box>
         );
       })}
@@ -394,7 +435,6 @@ function ImportStudentList({ students, existingNames, onImport }) {
 function exportToPDF(categories) {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' });
   const W = 210, H = 297, M = 15, CW = W - M * 2;
-
   let y = M, pageStudents = 0;
 
   function newPage() { doc.addPage(); y = M; pageStudents = 0; }
@@ -424,7 +464,6 @@ function exportToPDF(categories) {
       doc.text(student.percentage, W - M - doc.getTextWidth(student.percentage), y);
     }
     y += 7;
-    doc.setTextColor(0, 0, 0);
 
     if (student.extra) {
       doc.setFont('helvetica', 'italic');
@@ -432,14 +471,12 @@ function exportToPDF(categories) {
       doc.setTextColor(100, 100, 100);
       doc.text(student.extra, M + 4, y);
       y += 5.5;
-      doc.setTextColor(0, 0, 0);
     }
 
-    // Group presenters by row
     const byRow = {};
     (student.presenters || []).forEach(p => {
       if (!byRow[p.row]) byRow[p.row] = [];
-      byRow[p.row][p.slot - 1] = p.name;
+      if (p.name) byRow[p.row].push(p.name);
     });
     const ROW_LABELS = { 1: 'Team', 2: 'Guests', 3: 'Special Guest', 4: 'Special Guest' };
     [1, 2, 3, 4].forEach(row => {
@@ -458,7 +495,6 @@ function exportToPDF(categories) {
     pageStudents++;
   }
 
-  // Layout
   let firstOnPage = true;
   for (let i = 0; i < categories.length; i++) {
     const cat = categories[i];
@@ -508,17 +544,40 @@ function AgendaPage() {
   const [seeding, setSeeding] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
-  // All users split into teams and guests (same as Stage page)
   const [teams, setTeams] = useState([]);
   const [guests, setGuests] = useState([]);
-  // All DB students (for Add Student search)
   const [allDbStudents, setAllDbStudents] = useState([]);
+
+  // Extra names added via + button (not from DB users)
+  const [extraTeams, setExtraTeams] = useState([]);
+  const [extraGuests, setExtraGuests] = useState([]);
 
   // Add Category state
   const [addCatOpen, setAddCatOpen] = useState(false);
   const [newCatTitle, setNewCatTitle] = useState('');
   const [dbCategories, setDbCategories] = useState([]);
   const [loadingDbCats, setLoadingDbCats] = useState(false);
+
+  // Global presenter count: name → how many students across all categories use them
+  const presenterCounts = useMemo(() => {
+    const counts = {};
+    categories.forEach(cat => {
+      (cat.students || []).forEach(student => {
+        (student.presenters || []).forEach(p => {
+          if (p.name) counts[p.name] = (counts[p.name] || 0) + 1;
+        });
+      });
+    });
+    return counts;
+  }, [categories]);
+
+  function handleAddExtra(source, name) {
+    if (source === 'team') {
+      setExtraTeams(prev => prev.includes(name) ? prev : [...prev, name]);
+    } else {
+      setExtraGuests(prev => prev.includes(name) ? prev : [...prev, name]);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -629,7 +688,7 @@ function AgendaPage() {
           {categories.length === 0 && !loading && (
             <Button variant="contained" color="secondary" onClick={seed} disabled={seeding}
               startIcon={seeding ? <CircularProgress size={16} color="inherit" /> : null}>
-              {seeding ? 'Seeding…' : '🌱 Load Default Data (PDF)'}
+              {seeding ? 'Seeding…' : '🌱 Load Default Data'}
             </Button>
           )}
           <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddCat}>Add Category</Button>
@@ -644,13 +703,16 @@ function AgendaPage() {
         {(loading || saving) && <LinearProgress sx={{ mb: 2 }} color={saving ? 'success' : 'primary'} />}
 
         {!loading && categories.length === 0 && (
-          <Alert severity="info">No categories yet. Click <strong>Load Default Data (PDF)</strong> to pre-populate all 51 students, or add categories manually.</Alert>
+          <Alert severity="info">No categories yet. Click <strong>Load Default Data</strong> to pre-populate, or add categories manually.</Alert>
         )}
 
         {categories.slice().sort((a, b) => a.order - b.order).map(cat => (
           <CategorySection key={cat._id} cat={cat}
             onCategoryUpdate={updateCategory} onCategoryDelete={deleteCategory}
-            allDbStudents={allDbStudents} teams={teams} guests={guests} />
+            allDbStudents={allDbStudents} teams={teams} guests={guests}
+            presenterCounts={presenterCounts}
+            extraTeams={extraTeams} extraGuests={extraGuests} onAddExtra={handleAddExtra}
+          />
         ))}
 
         {/* Add Category Dialog */}
@@ -664,7 +726,7 @@ function AgendaPage() {
                 InputProps={{ endAdornment: loadingDbCats ? <CircularProgress size={16} /> : null }}
               />
               {filteredDbCats.length > 0 && (
-                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 200, overflowY: 'auto' }}>
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 220, overflowY: 'auto' }}>
                   {filteredDbCats.slice(0, 20).map(c => (
                     <Box key={c._id} onClick={() => setNewCatTitle(c.name || c.title)}
                       sx={{ px: 1.5, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
@@ -675,7 +737,7 @@ function AgendaPage() {
               )}
               {newCatTitle && filteredDbCats.length === 0 && !loadingDbCats && (
                 <Typography variant="caption" color="text.secondary">
-                  Not in DB — will be added as a new agenda category.
+                  Not in DB — will be created as a new agenda category.
                 </Typography>
               )}
             </Stack>
