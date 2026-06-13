@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Checkbox, Chip,
   CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
@@ -58,151 +58,161 @@ function PresenterPicker({ open, onClose, rowDef, selected, onChange, options, p
     if (!name) return;
     onAddNew(name);
     if (!selected.includes(name)) onChange([...selected, name]);
-    setNewName('');
-    setAddOpen(false);
+    setNewName(''); setAddOpen(false);
   }
 
   return (
     <>
       <Dialog open={open} onClose={onClose} fullScreen
-        PaperProps={{ sx: { display: 'flex', flexDirection: 'column' } }}>
+        PaperProps={{ sx: { display: 'flex', flexDirection: 'column', borderRadius: 0 } }}>
         {/* Header */}
-        <Box sx={{ px: 2, pt: 2, pb: 1, borderBottom: '2px solid', borderColor: rowDef.color, flexShrink: 0 }}>
+        <Box sx={{ px: 2, pt: 2, pb: 1.5, borderBottom: '3px solid', borderColor: rowDef.color, flexShrink: 0,
+          bgcolor: rowDef.color + '18' }}>
           <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="h6" fontWeight={800} sx={{ flex: 1, color: rowDef.color }}>
+            <Typography variant="h6" fontWeight={900} sx={{ flex: 1, color: rowDef.color, fontSize: 18 }}>
               {rowDef.row}. {rowDef.label}
+            </Typography>
+            <Typography variant="body2" sx={{ color: rowDef.color, fontWeight: 700 }}>
+              {selected.length} selected
             </Typography>
             <IconButton onClick={onClose}><CloseIcon /></IconButton>
           </Stack>
           <TextField
             fullWidth size="small" placeholder="Search name…" value={search}
-            onChange={e => setSearch(e.target.value)} autoFocus sx={{ mt: 1 }}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+            onChange={e => setSearch(e.target.value)} autoFocus sx={{ mt: 1.5 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+              sx: { borderRadius: 0, fontSize: 16 } }}
           />
         </Box>
 
-        {/* Selected section */}
         <Box sx={{ overflowY: 'auto', flex: 1 }}>
+          {/* Selected section */}
           {selected.length > 0 && (
-            <Box sx={{ bgcolor: 'action.hover', px: 2, py: 1 }}>
-              <Typography variant="overline" color="text.secondary" sx={{ fontSize: 10 }}>
-                Selected ({selected.length})
+            <Box sx={{ borderBottom: '2px solid', borderColor: 'divider' }}>
+              <Typography variant="overline" sx={{ px: 2, pt: 1, display: 'block', fontSize: 11,
+                color: rowDef.color, fontWeight: 800 }}>
+                ✓ Selected ({selected.length})
               </Typography>
-              {selected.map(name => (
-                <Box key={name} onClick={() => toggle(name)}
-                  sx={{ display: 'flex', alignItems: 'center', py: 1.25, cursor: 'pointer',
-                    borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <CheckBoxIcon sx={{ color: rowDef.color, mr: 1.5, fontSize: 22 }} />
-                  <Typography variant="body1" fontWeight={700} fontSize={17} sx={{ flex: 1 }}>
-                    {name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
-                    {presenterCounts[name] > 0 ? `×${presenterCounts[name]}` : ''}
-                  </Typography>
-                </Box>
-              ))}
+              {selected.map(name => {
+                const count = presenterCounts[name] || 0;
+                return (
+                  <Box key={name} onClick={() => toggle(name)}
+                    sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5, cursor: 'pointer',
+                      borderTop: '1px solid', borderColor: 'divider',
+                      bgcolor: rowDef.color + '0a', '&:hover': { bgcolor: rowDef.color + '18' } }}>
+                    <CheckBoxIcon sx={{ color: rowDef.color, mr: 1.5, fontSize: 24 }} />
+                    <Typography variant="body1" fontWeight={800} fontSize={18} sx={{ flex: 1 }}>
+                      {name}
+                    </Typography>
+                    {count > 0 && (
+                      <Box sx={{ bgcolor: '#ff6f00', color: '#fff', borderRadius: 0,
+                        minWidth: 28, height: 28, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontWeight: 900, fontSize: 13, px: 1 }}>
+                        ×{count}
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
             </Box>
           )}
 
-          {/* All options */}
-          <Box sx={{ px: 2 }}>
-            {selected.length > 0 && filtered.some(n => !selected.includes(n)) && (
-              <Typography variant="overline" color="text.secondary" sx={{ fontSize: 10, display: 'block', pt: 1 }}>
-                All
-              </Typography>
-            )}
-            {filtered.length === 0 && (
-              <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                No results — use + Add New below
-              </Typography>
-            )}
-            {filtered.filter(n => !selected.includes(n)).map(name => {
-              const count = presenterCounts[name] || 0;
-              return (
-                <Box key={name} onClick={() => toggle(name)}
-                  sx={{ display: 'flex', alignItems: 'center', py: 1.25, cursor: 'pointer',
-                    borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <CheckBoxOutlineBlankIcon sx={{ color: 'text.disabled', mr: 1.5, fontSize: 22 }} />
-                  <Typography variant="body1" fontSize={16} sx={{ flex: 1 }}>{name}</Typography>
-                  {count > 0 && (
-                    <Chip label={`×${count}`} size="small" color="primary"
-                      sx={{ fontSize: 11, height: 20, mr: 0.5 }} />
-                  )}
-                </Box>
-              );
-            })}
-          </Box>
+          {/* Unselected options */}
+          {selected.length > 0 && filtered.some(n => !selected.includes(n)) && (
+            <Typography variant="overline" sx={{ px: 2, pt: 1, display: 'block', fontSize: 11,
+              color: 'text.secondary', fontWeight: 700 }}>
+              All
+            </Typography>
+          )}
+          {filtered.length === 0 && (
+            <Typography variant="body1" color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
+              No results — use + Add New
+            </Typography>
+          )}
+          {filtered.filter(n => !selected.includes(n)).map(name => {
+            const count = presenterCounts[name] || 0;
+            return (
+              <Box key={name} onClick={() => toggle(name)}
+                sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5, cursor: 'pointer',
+                  borderTop: '1px solid', borderColor: 'divider',
+                  '&:hover': { bgcolor: 'action.hover' } }}>
+                <CheckBoxOutlineBlankIcon sx={{ color: 'text.disabled', mr: 1.5, fontSize: 24 }} />
+                <Typography variant="body1" fontSize={17} sx={{ flex: 1 }}>{name}</Typography>
+                {count > 0 && (
+                  <Box sx={{ bgcolor: '#ff6f00', color: '#fff', borderRadius: 0,
+                    minWidth: 28, height: 28, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontWeight: 900, fontSize: 13, px: 1 }}>
+                    ×{count}
+                  </Box>
+                )}
+              </Box>
+            );
+          })}
         </Box>
 
-        {/* Footer */}
-        <Box sx={{ px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+        <Box sx={{ px: 2, py: 1.5, borderTop: '2px solid', borderColor: 'divider', flexShrink: 0 }}>
           <Stack direction="row" spacing={1}>
-            <Button startIcon={<AddIcon />} onClick={() => { setNewName(''); setAddOpen(true); }} sx={{ mr: 'auto' }}>
+            <Button startIcon={<AddIcon />} onClick={() => { setNewName(''); setAddOpen(true); }}
+              sx={{ mr: 'auto', borderRadius: 0 }}>
               Add New
             </Button>
-            <Button variant="contained" onClick={onClose} sx={{ px: 4 }}>
+            <Button variant="contained" onClick={onClose}
+              sx={{ px: 5, borderRadius: 0, fontWeight: 800, fontSize: 15 }}>
               Done
             </Button>
           </Stack>
         </Box>
       </Dialog>
 
-      {/* Add New Name dialog */}
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}>
         <DialogTitle>Add New — {rowDef.label}</DialogTitle>
         <DialogContent>
           <TextField autoFocus fullWidth size="small" label="Full Name" value={newName}
             onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAdd()} sx={{ mt: 1 }} />
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            InputProps={{ sx: { borderRadius: 0 } }} sx={{ mt: 1 }} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdd} disabled={!newName.trim()}>Add</Button>
+          <Button onClick={() => setAddOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
+          <Button variant="contained" onClick={handleAdd} disabled={!newName.trim()}
+            sx={{ borderRadius: 0 }}>Add</Button>
         </DialogActions>
       </Dialog>
     </>
   );
 }
 
-// ── Presenter row display + edit trigger ──────────────────────────────────────
+// ── Presenter row display ─────────────────────────────────────────────────────
 function PresenterRow({ rowDef, selected, onChange, options, presenterCounts, onAddNew }) {
   const [pickerOpen, setPickerOpen] = useState(false);
-
   return (
     <>
-      <Box sx={{ mb: 0.75, pl: 0.5 }}>
-        <Stack direction="row" alignItems="center" spacing={0.5}>
-          <Typography variant="caption" fontWeight={800} sx={{ color: rowDef.color, flex: 1, fontSize: 12 }}>
+      <Box sx={{ mb: 1, borderLeft: '3px solid', borderColor: rowDef.color, pl: 1 }}>
+        <Stack direction="row" alignItems="center">
+          <Typography fontWeight={800} sx={{ color: rowDef.color, flex: 1, fontSize: 13 }}>
             {rowDef.row}. {rowDef.label}
           </Typography>
-          <IconButton size="small" onClick={() => setPickerOpen(true)} sx={{ p: 0.5 }}>
-            <EditIcon sx={{ fontSize: 15 }} />
+          <IconButton size="small" onClick={() => setPickerOpen(true)}
+            sx={{ p: 0.5, borderRadius: 0 }}>
+            <EditIcon sx={{ fontSize: 16, color: rowDef.color }} />
           </IconButton>
         </Stack>
-
         {selected.length === 0 ? (
-          <Typography variant="body2" color="text.disabled" sx={{ pl: 1, fontStyle: 'italic', fontSize: 13 }}>
-            — tap edit to assign
+          <Typography fontSize={14} color="text.disabled" sx={{ fontStyle: 'italic' }}>
+            — tap ✎ to assign
           </Typography>
-        ) : (
-          selected.map(name => (
-            <Typography key={name} variant="body1" fontWeight={700} fontSize={15}
-              sx={{ pl: 1, lineHeight: 1.7, color: 'text.primary' }}>
-              {name}
-            </Typography>
-          ))
-        )}
+        ) : selected.map(name => (
+          <Typography key={name} fontWeight={800} fontSize={16}
+            sx={{ lineHeight: 1.8, color: 'text.primary' }}>
+            {name}
+          </Typography>
+        ))}
       </Box>
-
       <PresenterPicker
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        rowDef={rowDef}
-        selected={selected}
-        onChange={onChange}
-        options={options}
-        presenterCounts={presenterCounts}
-        onAddNew={onAddNew}
+        open={pickerOpen} onClose={() => setPickerOpen(false)}
+        rowDef={rowDef} selected={selected} onChange={onChange}
+        options={options} presenterCounts={presenterCounts} onAddNew={onAddNew}
       />
     </>
   );
@@ -239,30 +249,26 @@ function StudentCard({ student, onSave, onDelete, teams, guests, presenterCounts
   }
 
   return (
-    <Card variant="outlined" sx={{ mb: 1.5 }}>
-      <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+    <Card variant="outlined" sx={{ mb: 1.5, borderRadius: 0, borderLeft: '4px solid #1976d2' }}>
+      <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Stack direction="row" alignItems="flex-start" spacing={1}>
           <Box sx={{ flex: 1 }}>
-            {/* Student name row */}
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 1 }}>
-              <Typography variant="h6" fontWeight={800} fontSize={18} sx={{ lineHeight: 1.3 }}>
+              <Typography fontWeight={900} fontSize={19} sx={{ lineHeight: 1.3 }}>
                 {student.name}
               </Typography>
               {student.percentage && (
-                <Chip label={student.percentage} size="small" color="primary" sx={{ fontWeight: 700, fontSize: 13 }} />
+                <Chip label={student.percentage} size="small" color="primary"
+                  sx={{ fontWeight: 800, fontSize: 13, borderRadius: 0 }} />
               )}
               {student.extra && (
-                <Typography variant="body2" color="text.secondary" fontSize={13}>{student.extra}</Typography>
+                <Typography fontSize={13} color="text.secondary">{student.extra}</Typography>
               )}
               {saving && <CircularProgress size={14} />}
             </Stack>
-
             <Divider sx={{ mb: 1 }} />
-
             {PRESENTER_ROWS.map(rowDef => (
-              <PresenterRow
-                key={rowDef.row}
-                rowDef={rowDef}
+              <PresenterRow key={rowDef.row} rowDef={rowDef}
                 selected={rowSel[rowDef.row] || []}
                 onChange={names => handleRowChange(rowDef.row, names)}
                 options={rowDef.source === 'team'
@@ -273,8 +279,8 @@ function StudentCard({ student, onSave, onDelete, teams, guests, presenterCounts
               />
             ))}
           </Box>
-
-          <IconButton size="small" color="error" onClick={() => onDelete(student)} sx={{ mt: 0.25 }}>
+          <IconButton size="small" color="error" onClick={() => onDelete(student)}
+            sx={{ mt: 0.25, borderRadius: 0 }}>
             <DeleteIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -292,15 +298,47 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
   const [addExtra, setAddExtra] = useState('');
   const [editTitleOpen, setEditTitleOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(cat.title);
-  const [importOpen, setImportOpen] = useState(false);
-  const [catStudents, setCatStudents] = useState([]);
-  const [loadingCatStudents, setLoadingCatStudents] = useState(false);
+  const autoImportDone = useRef(false);
 
   const existingNames = new Set((cat.students || []).map(s => s.name.toLowerCase().trim()));
   const filteredDbStudents = allDbStudents.filter(s => {
     const name = (s.fullName || `${s.firstName} ${s.lastName}`).toLowerCase();
     return !studentSearch || name.includes(studentSearch.toLowerCase());
   });
+
+  // Auto-import from DB on mount — silently adds missing students
+  useEffect(() => {
+    if (autoImportDone.current) return;
+    autoImportDone.current = true;
+    async function autoImport() {
+      try {
+        const res = await fetch(`${API}/api/categories`, { headers: authHeader() });
+        const cats = await safeJson(res);
+        const matched = (Array.isArray(cats) ? cats : []).find(c =>
+          (c.name || c.title || '').toLowerCase() === cat.title.toLowerCase()
+        );
+        if (!matched) return;
+        const sRes = await fetch(`${API}/api/students?categoryId=${matched._id}&limit=200`, { headers: authHeader() });
+        const sData = await safeJson(sRes);
+        const dbList = Array.isArray(sData) ? sData : sData.students || sData.data || [];
+        const currentNames = new Set((cat.students || []).map(s => s.name.toLowerCase().trim()));
+        const toAdd = dbList.filter(s =>
+          !currentNames.has((s.fullName || `${s.firstName} ${s.lastName}`).trim().toLowerCase())
+        );
+        if (!toAdd.length) return;
+        const startOrder = (cat.students?.length || 0) + 1;
+        onCategoryUpdate({ ...cat, students: [
+          ...(cat.students || []),
+          ...toAdd.map((s, i) => ({
+            name: s.fullName || `${s.firstName} ${s.lastName}`.trim(),
+            percentage: s.percentage ? `${s.percentage}%` : '',
+            extra: '', presenters: [], order: startOrder + i,
+          })),
+        ]});
+      } catch { /* silent */ }
+    }
+    autoImport();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function pickStudent(s) {
     setSelectedStudent(s);
@@ -321,44 +359,6 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
     setAddOpen(false);
   }
 
-  async function openImport() {
-    setImportOpen(true);
-    setLoadingCatStudents(true);
-    try {
-      const res = await fetch(`${API}/api/categories`, { headers: authHeader() });
-      const cats = await safeJson(res);
-      const matched = (Array.isArray(cats) ? cats : []).find(c =>
-        c.name?.toLowerCase() === cat.title.toLowerCase() ||
-        c.title?.toLowerCase() === cat.title.toLowerCase()
-      );
-      if (matched) {
-        const sRes = await fetch(`${API}/api/students?categoryId=${matched._id}&limit=200`, { headers: authHeader() });
-        const sData = await safeJson(sRes);
-        setCatStudents(Array.isArray(sData) ? sData : sData.students || sData.data || []);
-      } else {
-        setCatStudents([]);
-      }
-    } catch { setCatStudents([]); }
-    finally { setLoadingCatStudents(false); }
-  }
-
-  function importStudents(selected) {
-    const toAdd = selected.filter(s =>
-      !existingNames.has((s.fullName || `${s.firstName} ${s.lastName}`).trim().toLowerCase())
-    );
-    if (!toAdd.length) { setImportOpen(false); return; }
-    const startOrder = (cat.students?.length || 0) + 1;
-    onCategoryUpdate({ ...cat, students: [
-      ...(cat.students || []),
-      ...toAdd.map((s, i) => ({
-        name: s.fullName || `${s.firstName} ${s.lastName}`.trim(),
-        percentage: s.percentage ? `${s.percentage}%` : '',
-        extra: '', presenters: [], order: startOrder + i,
-      })),
-    ]});
-    setImportOpen(false);
-  }
-
   async function saveStudentPresenter(updated) {
     await onCategoryUpdate({ ...cat, students: (cat.students || []).map(s =>
       s.name === updated.name && s.order === updated.order ? updated : s
@@ -372,16 +372,18 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
   }
 
   return (
-    <Card variant="outlined" sx={{ mb: 2.5, borderLeft: '5px solid', borderColor: 'primary.main' }}>
-      <CardContent sx={{ py: 2, px: 2, '&:last-child': { pb: 2 } }}>
-        {/* Category header */}
+    <Card variant="outlined" sx={{ mb: 2, borderRadius: 0, borderLeft: '5px solid #1976d2' }}>
+      <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-          <Typography variant="h6" fontWeight={800} fontSize={17} sx={{ flex: 1 }}>{cat.title}</Typography>
-          <Chip label={`${(cat.students || []).length} students`} size="small" color="primary" variant="outlined" />
-          <IconButton size="small" onClick={() => { setEditTitle(cat.title); setEditTitleOpen(true); }}>
+          <Typography fontWeight={900} fontSize={18} sx={{ flex: 1 }}>{cat.title}</Typography>
+          <Chip label={`${(cat.students || []).length}`} size="small" color="primary"
+            sx={{ fontWeight: 700, borderRadius: 0 }} />
+          <IconButton size="small" sx={{ borderRadius: 0 }}
+            onClick={() => { setEditTitle(cat.title); setEditTitleOpen(true); }}>
             <EditIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" color="error" onClick={() => onCategoryDelete(cat)}>
+          <IconButton size="small" color="error" sx={{ borderRadius: 0 }}
+            onClick={() => onCategoryDelete(cat)}>
             <DeleteIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -389,36 +391,32 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
         {(cat.students || []).slice().sort((a, b) => a.order - b.order).map((s, i) => (
           <StudentCard key={`${s.name}-${i}`} student={s}
             onSave={saveStudentPresenter} onDelete={deleteStudent}
-            teams={teams} guests={guests}
-            presenterCounts={presenterCounts}
-            extraTeams={extraTeams} extraGuests={extraGuests} onAddExtra={onAddExtra}
-          />
+            teams={teams} guests={guests} presenterCounts={presenterCounts}
+            extraTeams={extraTeams} extraGuests={extraGuests} onAddExtra={onAddExtra} />
         ))}
 
-        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-          <Button size="small" variant="outlined" startIcon={<AddIcon />}
-            onClick={() => { setStudentSearch(''); setSelectedStudent(null); setAddPct(''); setAddExtra(''); setAddOpen(true); }}>
-            Add Student
-          </Button>
-          <Button size="small" variant="text" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
-            onClick={openImport}>
-            Import from DB
-          </Button>
-        </Stack>
+        <Button size="small" variant="outlined" startIcon={<AddIcon />} sx={{ borderRadius: 0, mt: 0.5 }}
+          onClick={() => { setStudentSearch(''); setSelectedStudent(null); setAddPct(''); setAddExtra(''); setAddOpen(true); }}>
+          Add Student
+        </Button>
       </CardContent>
 
       {/* Add Student Dialog */}
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}>
         <DialogTitle>Add Student to "{cat.title}"</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
-            <TextField autoFocus label="Search student from DB" fullWidth size="small"
+            <TextField autoFocus label="Search student" fullWidth size="small"
               value={studentSearch}
               onChange={e => { setStudentSearch(e.target.value); setSelectedStudent(null); }}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+                sx: { borderRadius: 0 },
+              }}
             />
             {studentSearch.length > 0 && !selectedStudent && (
-              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 200, overflowY: 'auto' }}>
+              <Box sx={{ border: '1px solid', borderColor: 'divider', maxHeight: 200, overflowY: 'auto' }}>
                 {filteredDbStudents.length === 0
                   ? <Typography variant="body2" sx={{ p: 1.5, color: 'text.secondary', fontStyle: 'italic' }}>
                       Not in DB — will be added as typed
@@ -426,55 +424,44 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
                   : filteredDbStudents.slice(0, 20).map(s => (
                     <Box key={s._id} onClick={() => pickStudent(s)}
                       sx={{ px: 2, py: 1, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
-                      <Typography variant="body1" fontWeight={600}>{s.fullName || `${s.firstName} ${s.lastName}`}</Typography>
+                      <Typography fontWeight={600} fontSize={15}>{s.fullName || `${s.firstName} ${s.lastName}`}</Typography>
                       {s.percentage ? <Typography variant="caption" color="text.secondary">{s.percentage}%</Typography> : null}
                     </Box>
                   ))}
               </Box>
             )}
             {selectedStudent && (
-              <Alert severity="success" sx={{ py: 0.5 }}>
+              <Alert severity="success" sx={{ py: 0.5, borderRadius: 0 }}>
                 Selected: <strong>{selectedStudent.fullName || `${selectedStudent.firstName} ${selectedStudent.lastName}`}</strong>
               </Alert>
             )}
-            <TextField label="Percentage / Score (optional)" fullWidth size="small" value={addPct} onChange={e => setAddPct(e.target.value)} />
-            <TextField label="Extra info (e.g. JEE percentile)" fullWidth size="small" value={addExtra} onChange={e => setAddExtra(e.target.value)} />
+            <TextField label="Percentage / Score" fullWidth size="small" value={addPct}
+              onChange={e => setAddPct(e.target.value)} InputProps={{ sx: { borderRadius: 0 } }} />
+            <TextField label="Extra info (e.g. JEE percentile)" fullWidth size="small" value={addExtra}
+              onChange={e => setAddExtra(e.target.value)} InputProps={{ sx: { borderRadius: 0 } }} />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={saveStudent} disabled={!studentSearch.trim()}>Add</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Import from DB Dialog */}
-      <Dialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Import Students — {cat.title}</DialogTitle>
-        <DialogContent>
-          {loadingCatStudents
-            ? <LinearProgress sx={{ mt: 2 }} />
-            : catStudents.length === 0
-              ? <Alert severity="info" sx={{ mt: 1 }}>No students found in DB for this category.</Alert>
-              : <ImportStudentList students={catStudents} existingNames={existingNames} onImport={importStudents} />
-          }
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setImportOpen(false)}>Close</Button>
+          <Button onClick={() => setAddOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
+          <Button variant="contained" onClick={saveStudent} disabled={!studentSearch.trim()}
+            sx={{ borderRadius: 0 }}>Add</Button>
         </DialogActions>
       </Dialog>
 
       {/* Edit Title Dialog */}
-      <Dialog open={editTitleOpen} onClose={() => setEditTitleOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={editTitleOpen} onClose={() => setEditTitleOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}>
         <DialogTitle>Edit Category Title</DialogTitle>
         <DialogContent>
           <TextField autoFocus fullWidth size="small" label="Title" value={editTitle}
             onChange={e => setEditTitle(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && (onCategoryUpdate({ ...cat, title: editTitle }), setEditTitleOpen(false))}
-            sx={{ mt: 1 }} />
+            InputProps={{ sx: { borderRadius: 0 } }} sx={{ mt: 1 }} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditTitleOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => { onCategoryUpdate({ ...cat, title: editTitle }); setEditTitleOpen(false); }}
+          <Button onClick={() => setEditTitleOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
+          <Button variant="contained" sx={{ borderRadius: 0 }}
+            onClick={() => { onCategoryUpdate({ ...cat, title: editTitle }); setEditTitleOpen(false); }}
             disabled={!editTitle.trim()}>Save</Button>
         </DialogActions>
       </Dialog>
@@ -482,107 +469,137 @@ function CategorySection({ cat, onCategoryUpdate, onCategoryDelete, allDbStudent
   );
 }
 
-// ── Import student checklist ──────────────────────────────────────────────────
-function ImportStudentList({ students, existingNames, onImport }) {
-  const [checked, setChecked] = useState(() =>
-    students.map(s => !existingNames.has((s.fullName || `${s.firstName} ${s.lastName}`).trim().toLowerCase()))
-  );
-  function toggle(i) { setChecked(prev => prev.map((v, j) => j === i ? !v : v)); }
-  return (
-    <Stack sx={{ mt: 1 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>
-        {students.length} students found. Already-added are unchecked.
-      </Typography>
-      {students.map((s, i) => {
-        const name = s.fullName || `${s.firstName} ${s.lastName}`.trim();
-        const already = existingNames.has(name.toLowerCase());
-        return (
-          <Box key={s._id} onClick={() => toggle(i)}
-            sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.75, cursor: 'pointer',
-              borderRadius: 1, opacity: already ? 0.5 : 1, '&:hover': { bgcolor: 'action.hover' } }}>
-            <Checkbox size="small" checked={checked[i]} onChange={() => toggle(i)} sx={{ p: 0 }} />
-            <Typography variant="body1" fontWeight={checked[i] ? 700 : 400} sx={{ flex: 1 }}>{name}</Typography>
-            {s.percentage ? <Chip label={`${s.percentage}%`} size="small" variant="outlined" /> : null}
-            {already && <Chip label="added" size="small" />}
-          </Box>
-        );
-      })}
-      <Button variant="contained" sx={{ mt: 1.5 }}
-        onClick={() => onImport(students.filter((_, i) => checked[i]))}>
-        Import Selected ({checked.filter(Boolean).length})
-      </Button>
-    </Stack>
-  );
-}
-
-// ── PDF Export ────────────────────────────────────────────────────────────────
+// ── PDF Export — table format matching reference PDF ──────────────────────────
 function exportToPDF(categories) {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' });
-  const W = 210, H = 297, M = 15, CW = W - M * 2;
-  let y = M, pageStudents = 0;
+  const W = 210, H = 297, MX = 12, MY = 14;
 
-  function newPage() { doc.addPage(); y = M; pageStudents = 0; }
+  // Column x-positions and widths: serial | name | pct | presenters
+  const C = { sx: MX, sw: 13, nx: MX+13, nw: 57, px: MX+70, pw: 24, rx: MX+94, rw: W-MX-MX-94 };
+  const ROW_H = 8;   // height per presenter sub-row
+  const N_PRES = 4;  // always draw 4 presenter rows per student
+  const STU_H = ROW_H * N_PRES;
 
-  function drawCatTitle(title, contd) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(20, 80, 160);
-    doc.text(contd ? `${title} (contd.)` : title, M, y); y += 7;
-    doc.setDrawColor(20, 80, 160); doc.setLineWidth(0.6); doc.line(M, y, W - M, y); y += 5;
-    doc.setTextColor(0, 0, 0);
-  }
+  let y = MY;
+  let curPage = 1;
 
-  function drawStudent(student, serial) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(0, 0, 0);
-    doc.text(`${serial}. ${student.name}`, M, y);
-    if (student.percentage) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(14); doc.setTextColor(60, 60, 60);
-      doc.text(student.percentage, W - M - doc.getTextWidth(student.percentage), y);
-    }
-    y += 7;
-    if (student.extra) {
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(13); doc.setTextColor(100, 100, 100);
-      doc.text(student.extra, M + 4, y); y += 5.5;
-    }
-    const byRow = {};
-    (student.presenters || []).forEach(p => {
-      if (!byRow[p.row]) byRow[p.row] = [];
-      if (p.name) byRow[p.row].push(p.name);
-    });
-    const ROW_LABELS = { 1: 'Team', 2: 'Guests', 3: 'Special Guest', 4: 'Special Guest' };
-    [1, 2, 3, 4].forEach(row => {
-      const names = (byRow[row] || []).filter(Boolean);
-      if (!names.length) return;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(13); doc.setTextColor(70, 70, 70);
-      const line = `${ROW_LABELS[row]}: ${names.join('   ·   ')}`;
-      const wrapped = doc.splitTextToSize(line, CW - 6);
-      doc.text(wrapped, M + 4, y); y += wrapped.length * 5.5;
-    });
-    y += 6; pageStudents++;
-  }
+  function newPage() { doc.addPage(); curPage++; y = MY; }
+  function need(h) { if (y + h > H - MY) newPage(); }
 
-  let firstOnPage = true;
-  for (let i = 0; i < categories.length; i++) {
-    const cat = categories[i];
+  // ── Page 1 header ──
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(0, 0, 180);
+  doc.text('19th BK Scholar Awards', W/2, y + 8, { align: 'center' });
+  y += 13;
+  doc.setFontSize(14);
+  doc.setTextColor(180, 0, 0);
+  doc.text('Sunday, 14th June 2026', W/2, y + 6, { align: 'center' });
+  y += 13;
+
+  for (const cat of categories) {
     const students = [...(cat.students || [])].sort((a, b) => a.order - b.order);
-    if (students.length > 3) {
-      if (!firstOnPage || pageStudents > 0) newPage();
-      drawCatTitle(cat.title, false);
-      let serial = 1;
-      for (const s of students) { if (pageStudents >= 4) { newPage(); drawCatTitle(cat.title, true); } drawStudent(s, serial++); }
-    } else {
-      if (!firstOnPage && pageStudents + students.length > 4) newPage();
-      else if (!firstOnPage) { y += 3; doc.setDrawColor(210,210,210); doc.setLineWidth(0.3); doc.line(M,y,W-M,y); y+=3; }
-      drawCatTitle(cat.title, false);
-      let serial = 1;
-      for (const s of students) { if (pageStudents >= 4) { newPage(); drawCatTitle(cat.title, true); } drawStudent(s, serial++); }
-    }
-    firstOnPage = false;
+    if (!students.length) continue;
+
+    // Category header
+    need(10 + STU_H);
+    doc.setFillColor(255, 255, 0);
+    doc.rect(MX, y, W-2*MX, 9, 'F');
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.4);
+    doc.rect(MX, y, W-2*MX, 9, 'D');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text(cat.title, W/2, y + 6.2, { align: 'center' });
+    y += 9;
+
+    students.forEach((student, idx) => {
+      need(STU_H);
+
+      const sy = y;
+
+      // Collect presenter lines (one line per presenter row, all names joined)
+      const byRow = {};
+      (student.presenters || []).forEach(p => {
+        if (!byRow[p.row]) byRow[p.row] = [];
+        if (p.name) byRow[p.row].push(p.name);
+      });
+      const pLines = [1,2,3,4].map(r => (byRow[r] || []).filter(Boolean).join(' & '));
+
+      // Outer border (full student block)
+      doc.setDrawColor(0);
+      doc.setLineWidth(0.35);
+      doc.rect(MX, sy, W-2*MX, STU_H, 'D');
+
+      // Vertical column separators
+      [C.nx, C.px, C.rx].forEach(x => {
+        doc.setLineWidth(0.25);
+        doc.line(x, sy, x, sy + STU_H);
+      });
+
+      // Serial number (centered in block)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0);
+      doc.text(String(idx+1), C.sx + C.sw/2, sy + STU_H/2 + 2, { align: 'center' });
+
+      // Student name (bold, dark red, vertically centered)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(180, 30, 30);
+      const nLines = doc.splitTextToSize(student.name, C.nw - 3);
+      const nY = sy + STU_H/2 - (nLines.length * 5.5)/2 + 4.5;
+      nLines.forEach((l, li) => doc.text(l, C.nx + 2, nY + li * 5.5));
+
+      // Percentage (centered)
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      if (student.percentage) {
+        const pLines2 = doc.splitTextToSize(student.percentage, C.pw - 2);
+        const pY = student.extra ? sy + STU_H/2 - 2 : sy + STU_H/2 + 2;
+        doc.text(pLines2, C.px + C.pw/2, pY, { align: 'center' });
+        if (student.extra) {
+          doc.setFontSize(8);
+          doc.setTextColor(80, 80, 80);
+          const eLines = doc.splitTextToSize(student.extra, C.pw - 2);
+          doc.text(eLines, C.px + C.pw/2, pY + 5, { align: 'center' });
+        }
+      }
+
+      // Presenter rows with horizontal dividers
+      pLines.forEach((line, ri) => {
+        const ry = sy + ri * ROW_H;
+        if (ri > 0) {
+          doc.setDrawColor(160, 160, 160);
+          doc.setLineWidth(0.15);
+          doc.line(C.rx, ry, W - MX, ry);
+        }
+        if (line) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          doc.setTextColor(0, 0, 0);
+          const lw = doc.splitTextToSize(line, C.rw - 4);
+          doc.text(lw, C.rx + 2, ry + 5.5);
+        }
+      });
+
+      y += STU_H;
+    });
   }
+
+  // Page footers
   const total = doc.getNumberOfPages();
   for (let pg = 1; pg <= total; pg++) {
-    doc.setPage(pg); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${pg} of ${total}`, W / 2, H - 6, { align: 'center' });
-    doc.text('BK Scholar Awards', M, H - 6);
+    doc.setPage(pg);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(140, 140, 140);
+    doc.text(`Page ${pg} of ${total}`, W/2, H-5, { align: 'center' });
+    doc.text('BK Scholar Awards', MX, H-5);
   }
+
   doc.save('BK_Awards_Agenda.pdf');
 }
 
@@ -622,30 +639,27 @@ function AgendaPage() {
   }
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      // Agenda is required — throw on failure
       const agendaRes = await fetch(`${API}/api/agenda`, { headers: authHeader() });
       const agendaData = await safeJson(agendaRes);
       if (!agendaRes.ok) throw new Error(agendaData?.message || `HTTP ${agendaRes.status}`);
       setCategories(agendaData);
     } catch (e) { setError(e.message); setLoading(false); return; }
 
-    // Users and students are best-effort — don't block agenda on failure
     try {
       const usersRes = await fetch(`${API}/api/users`, { headers: authHeader() });
       const usersData = await safeJson(usersRes);
-      const userList = Array.isArray(usersData) ? usersData : usersData.users || [];
-      setTeams(userList.filter(u => ['TEAM_LEADER','SENIOR_TEAM','ADMIN','HOST','SUPER_ADMIN'].includes(u.eventDutyType)).map(u => u.name).filter(Boolean));
-      setGuests(userList.filter(u => u.eventDutyType === 'GUEST').map(u => u.name).filter(Boolean));
-    } catch { /* users optional */ }
+      const ul = Array.isArray(usersData) ? usersData : usersData.users || [];
+      setTeams(ul.filter(u => ['TEAM_LEADER','SENIOR_TEAM','ADMIN','HOST','SUPER_ADMIN'].includes(u.eventDutyType)).map(u => u.name).filter(Boolean));
+      setGuests(ul.filter(u => u.eventDutyType === 'GUEST').map(u => u.name).filter(Boolean));
+    } catch { /* optional */ }
 
     try {
       const sRes = await fetch(`${API}/api/students?page=1&limit=500`, { headers: authHeader() });
       const sData = await safeJson(sRes);
       setAllDbStudents(Array.isArray(sData) ? sData : sData.students || sData.data || []);
-    } catch { /* students optional */ }
+    } catch { /* optional */ }
 
     setLoading(false);
   }, []);
@@ -723,26 +737,31 @@ function AgendaPage() {
       />
       <PageSurface>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
-          <Button variant="outlined" startIcon={<RefreshIcon />} onClick={load} disabled={loading}>Refresh</Button>
+          <Button variant="outlined" startIcon={<RefreshIcon />} onClick={load} disabled={loading}
+            sx={{ borderRadius: 0 }}>Refresh</Button>
           {categories.length === 0 && !loading && (
             <Button variant="contained" color="secondary" onClick={seed} disabled={seeding}
+              sx={{ borderRadius: 0 }}
               startIcon={seeding ? <CircularProgress size={16} color="inherit" /> : null}>
               {seeding ? 'Seeding…' : '🌱 Load Default Data'}
             </Button>
           )}
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddCat}>Add Category</Button>
+          <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddCat}
+            sx={{ borderRadius: 0 }}>Add Category</Button>
           <Button variant="contained" color="success" startIcon={<DownloadIcon />}
             onClick={() => { try { exportToPDF(categories); } catch(e) { setError(e.message); } }}
-            disabled={categories.length === 0}>
+            disabled={categories.length === 0} sx={{ borderRadius: 0 }}>
             Export PDF
           </Button>
         </Stack>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+        {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 0 }} onClose={() => setError('')}>{error}</Alert>}
         {(loading || saving) && <LinearProgress sx={{ mb: 2 }} color={saving ? 'success' : 'primary'} />}
 
         {!loading && categories.length === 0 && (
-          <Alert severity="info">No categories yet. Click <strong>Load Default Data</strong> to pre-populate.</Alert>
+          <Alert severity="info" sx={{ borderRadius: 0 }}>
+            No categories yet. Click <strong>Load Default Data</strong> to pre-populate.
+          </Alert>
         )}
 
         {categories.slice().sort((a, b) => a.order - b.order).map(cat => (
@@ -755,7 +774,8 @@ function AgendaPage() {
         ))}
 
         {/* Add Category Dialog */}
-        <Dialog open={addCatOpen} onClose={() => setAddCatOpen(false)} maxWidth="xs" fullWidth>
+        <Dialog open={addCatOpen} onClose={() => setAddCatOpen(false)} maxWidth="xs" fullWidth
+          PaperProps={{ sx: { borderRadius: 0 } }}>
           <DialogTitle>Add Category</DialogTitle>
           <DialogContent>
             <Stack spacing={1.5} sx={{ mt: 1 }}>
@@ -765,14 +785,15 @@ function AgendaPage() {
                 InputProps={{
                   startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
                   endAdornment: loadingDbCats ? <CircularProgress size={16} /> : null,
+                  sx: { borderRadius: 0 },
                 }}
               />
               {filteredDbCats.length > 0 && (
-                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 220, overflowY: 'auto' }}>
+                <Box sx={{ border: '1px solid', borderColor: 'divider', maxHeight: 220, overflowY: 'auto' }}>
                   {filteredDbCats.slice(0, 20).map(c => (
                     <Box key={c._id} onClick={() => setNewCatTitle(c.name || c.title)}
                       sx={{ px: 2, py: 1, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
-                      <Typography variant="body1">{c.name || c.title}</Typography>
+                      <Typography fontSize={15}>{c.name || c.title}</Typography>
                     </Box>
                   ))}
                 </Box>
@@ -785,8 +806,9 @@ function AgendaPage() {
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setAddCatOpen(false)}>Cancel</Button>
-            <Button variant="contained" onClick={addCategory} disabled={!newCatTitle.trim()}>Add</Button>
+            <Button onClick={() => setAddCatOpen(false)} sx={{ borderRadius: 0 }}>Cancel</Button>
+            <Button variant="contained" onClick={addCategory} disabled={!newCatTitle.trim()}
+              sx={{ borderRadius: 0 }}>Add</Button>
           </DialogActions>
         </Dialog>
       </PageSurface>
@@ -801,7 +823,7 @@ class AgendaErrorBoundary extends Component {
   render() {
     if (this.state.error) return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: 0 }}>
           <strong>Agenda crashed:</strong> {this.state.error?.message}
         </Alert>
         <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
