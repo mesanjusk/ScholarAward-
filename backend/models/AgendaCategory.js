@@ -13,12 +13,14 @@ const studentEntrySchema = new mongoose.Schema({
   extra:      { type: String, default: '' },
   presenters: { type: [presenterSchema], default: [] },
   order:      { type: Number, default: 0 },
+  status:     { type: String, default: 'live', enum: ['live', 'done'] },
 }, { _id: false });
 
 const agendaCategorySchema = new mongoose.Schema({
   title:    { type: String, required: true, trim: true },
   order:    { type: Number, default: 0 },
   students: { type: [studentEntrySchema], default: [] },
+  status:   { type: String, default: 'live', enum: ['live', 'done'] },
 }, { timestamps: true });
 
 module.exports = mongoose.model('AgendaCategory', agendaCategorySchema);
