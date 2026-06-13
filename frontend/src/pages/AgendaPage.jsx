@@ -34,7 +34,6 @@ async function safeJson(res) {
   try { return JSON.parse(text); } catch { throw new Error(`Server error (${res.status}): ${text.slice(0,100)}`); }
 }
 
-// Theme colours — keep minimal
 const NAVY = '#0a1929';
 const DONE_BG = '#1b5e20';
 
@@ -44,6 +43,16 @@ const PRESENTER_ROWS = [
   { row: 3, label: 'Special Guest 1',      source: 'guest' },
   { row: 4, label: 'Special Guest 2',      source: 'guest' },
 ];
+
+// Fuzzy category title match — handles minor name differences
+function catTitleMatch(agendaTitle, dbCatTitle) {
+  const a = (agendaTitle || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  const b = (dbCatTitle  || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+// Get student name string
+function sName(s) { return (s.fullName || `${s.firstName || ''} ${s.lastName || ''}`).trim(); }
 
 // ── Count badge ───────────────────────────────────────────────────────────────
 function CountBadge({ count }) {
@@ -85,14 +94,14 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
         PaperProps={{ sx: { display: 'flex', flexDirection: 'column', borderRadius: 0, bgcolor: '#f5f5f5' } }}>
         <Box sx={{ px: 2, pt: 2, pb: 1.5, bgcolor: NAVY, color: 'white', flexShrink: 0 }}>
           <Stack direction="row" alignItems="center">
-            <Typography fontWeight={900} fontSize={18} sx={{ flex: 1 }}>{rowLabel}</Typography>
-            <Typography fontSize={13} sx={{ mr: 1, opacity: 0.7 }}>{selected.length} selected</Typography>
+            <Typography fontWeight={900} fontSize={20} sx={{ flex: 1 }}>{rowLabel}</Typography>
+            <Typography fontSize={14} sx={{ mr: 1, opacity: 0.7 }}>{selected.length} selected</Typography>
             <IconButton onClick={onClose} sx={{ color: 'white' }}><CloseIcon /></IconButton>
           </Stack>
           <TextField fullWidth size="small" placeholder="Search name…" value={search}
             onChange={e => setSearch(e.target.value)} autoFocus sx={{ mt: 1.5 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'white' }} /></InputAdornment>,
-              sx: { borderRadius: 0, bgcolor: 'rgba(255,255,255,0.12)', color: 'white',
+              sx: { borderRadius: 0, bgcolor: 'rgba(255,255,255,0.15)', color: 'white',
                 '& input': { color: 'white' }, '& input::placeholder': { color: 'rgba(255,255,255,0.6)' } } }}
           />
         </Box>
@@ -101,40 +110,36 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
           {selected.length > 0 && (
             <>
               <Box sx={{ px: 2, py: 0.75, bgcolor: '#e3f2fd' }}>
-                <Typography fontSize={11} fontWeight={800} color="primary">SELECTED</Typography>
+                <Typography fontSize={11} fontWeight={800} color="primary">✓ SELECTED ({selected.length})</Typography>
               </Box>
               {selected.map(name => (
                 <Box key={name} onClick={() => toggle(name)}
-                  sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5,
+                  sx={{ display: 'flex', alignItems: 'center', px: 2, py: 2,
                     borderBottom: '1px solid #e0e0e0', cursor: 'pointer', bgcolor: '#f0f7ff',
                     '&:hover': { bgcolor: '#dbeeff' } }}>
-                  <CheckBoxIcon sx={{ color: '#1565c0', mr: 1.5, fontSize: 22 }} />
-                  <Typography fontWeight={800} fontSize={17} sx={{ flex: 1 }}>{name}</Typography>
+                  <CheckBoxIcon sx={{ color: '#1565c0', mr: 2, fontSize: 26 }} />
+                  <Typography fontWeight={900} fontSize={19} sx={{ flex: 1 }}>{name}</Typography>
                   <CountBadge count={presenterCounts[name] || 0} />
                 </Box>
               ))}
               <Divider />
             </>
           )}
-
           {filtered.filter(n => !selected.includes(n)).length === 0 && !selected.length && (
-            <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center', fontSize: 15 }}>
+            <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center', fontSize: 16 }}>
               No names found — tap + Add New below
             </Typography>
           )}
-          {filtered.filter(n => !selected.includes(n)).map(name => {
-            const cnt = presenterCounts[name] || 0;
-            return (
-              <Box key={name} onClick={() => toggle(name)}
-                sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5,
-                  borderBottom: '1px solid #e0e0e0', cursor: 'pointer',
-                  '&:hover': { bgcolor: '#f5f5f5' } }}>
-                <CheckBoxOutlineBlankIcon sx={{ color: '#bdbdbd', mr: 1.5, fontSize: 22 }} />
-                <Typography fontSize={16} sx={{ flex: 1 }}>{name}</Typography>
-                <CountBadge count={cnt} />
-              </Box>
-            );
-          })}
+          {filtered.filter(n => !selected.includes(n)).map(name => (
+            <Box key={name} onClick={() => toggle(name)}
+              sx={{ display: 'flex', alignItems: 'center', px: 2, py: 2,
+                borderBottom: '1px solid #e0e0e0', cursor: 'pointer',
+                '&:hover': { bgcolor: '#f5f5f5' } }}>
+              <CheckBoxOutlineBlankIcon sx={{ color: '#bdbdbd', mr: 2, fontSize: 26 }} />
+              <Typography fontSize={18} sx={{ flex: 1 }}>{name}</Typography>
+              <CountBadge count={presenterCounts[name] || 0} />
+            </Box>
+          ))}
         </Box>
 
         <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '2px solid #e0e0e0', flexShrink: 0 }}>
@@ -142,7 +147,7 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
             <Button startIcon={<AddIcon />} onClick={() => { setNewName(''); setAddOpen(true); }}
               sx={{ borderRadius: 0 }}>Add New</Button>
             <Button variant="contained" onClick={onClose}
-              sx={{ borderRadius: 0, flex: 1, fontWeight: 800, fontSize: 15, py: 1 }}>Done</Button>
+              sx={{ borderRadius: 0, flex: 1, fontWeight: 800, fontSize: 16, py: 1 }}>Done</Button>
           </Stack>
         </Box>
       </Dialog>
@@ -166,52 +171,42 @@ function PresenterPicker({ open, onClose, rowLabel, selected, onChange, options,
   );
 }
 
-// ── Full-screen student picker (for adding students) ──────────────────────────
-function StudentPicker({ open, onClose, catTitle, existingNames, onAdd }) {
+// ── Full-screen student picker ────────────────────────────────────────────────
+// allDbStudents: ALL students from API (with categoryId populated)
+// Filtered client-side by category title match
+function StudentPicker({ open, onClose, catTitle, existingNames, allDbStudents, onAdd }) {
   const [search, setSearch] = useState('');
-  const [dbStudents, setDbStudents] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customPct, setCustomPct] = useState('');
 
   useEffect(() => {
-    if (!open) return;
-    setSearch(''); setCustomName(''); setCustomPct('');
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await fetch(`${API}/api/categories`, { headers: authHeader() });
-        const cats = await safeJson(res);
-        const matched = (Array.isArray(cats) ? cats : []).find(c =>
-          (c.name || c.title || '').toLowerCase() === catTitle.toLowerCase()
-        );
-        if (matched) {
-          const sRes = await fetch(`${API}/api/students?categoryId=${matched._id}&limit=200`, { headers: authHeader() });
-          const sData = await safeJson(sRes);
-          setDbStudents(Array.isArray(sData) ? sData : sData.students || sData.data || []);
-        } else { setDbStudents([]); }
-      } catch { setDbStudents([]); }
-      finally { setLoading(false); }
-    }
-    load();
-  }, [open, catTitle]);
+    if (open) { setSearch(''); setCustomName(''); setCustomPct(''); }
+  }, [open]);
 
-  const filtered = dbStudents.filter(s => {
-    const name = (s.fullName || `${s.firstName} ${s.lastName}`).toLowerCase();
+  // Filter allDbStudents by category title (fuzzy match)
+  const catStudents = useMemo(() => {
+    return allDbStudents.filter(s => {
+      const dbCatTitle = s.categoryId?.title || s.categoryName || s.categoryOther || '';
+      return catTitleMatch(catTitle, dbCatTitle);
+    });
+  }, [allDbStudents, catTitle]);
+
+  // If no category match, fall back to all students (with search)
+  const sourceList = catStudents.length > 0 ? catStudents : allDbStudents;
+  const filtered = sourceList.filter(s => {
+    const name = sName(s).toLowerCase();
     return !search || name.includes(search.toLowerCase());
   });
 
   function addFromDb(s) {
-    const name = (s.fullName || `${s.firstName} ${s.lastName}`).trim();
-    onAdd({ name, percentage: s.percentage ? `${s.percentage}%` : '', extra: '' });
+    onAdd({ name: sName(s), percentage: s.percentage ? `${s.percentage}%` : '', extra: '' });
     onClose();
   }
 
   function addCustom() {
     if (!customName.trim()) return;
     onAdd({ name: customName.trim(), percentage: customPct.trim(), extra: '' });
-    setCustomName(''); setCustomPct('');
-    onClose();
+    setCustomName(''); setCustomPct(''); onClose();
   }
 
   return (
@@ -219,46 +214,51 @@ function StudentPicker({ open, onClose, catTitle, existingNames, onAdd }) {
       PaperProps={{ sx: { display: 'flex', flexDirection: 'column', borderRadius: 0, bgcolor: '#f5f5f5' } }}>
       <Box sx={{ px: 2, pt: 2, pb: 1.5, bgcolor: NAVY, color: 'white', flexShrink: 0 }}>
         <Stack direction="row" alignItems="center">
-          <Typography fontWeight={900} fontSize={18} sx={{ flex: 1 }}>Add Student — {catTitle}</Typography>
+          <Box sx={{ flex: 1 }}>
+            <Typography fontWeight={900} fontSize={20}>Add Student</Typography>
+            <Typography fontSize={13} sx={{ opacity: 0.7 }}>
+              {catTitle} · {catStudents.length > 0 ? `${catStudents.length} in DB` : `${allDbStudents.length} total (no category match)`}
+            </Typography>
+          </Box>
           <IconButton onClick={onClose} sx={{ color: 'white' }}><CloseIcon /></IconButton>
         </Stack>
-        <TextField fullWidth size="small" placeholder="Search in category…" value={search}
+        <TextField fullWidth size="small" placeholder="Search student…" value={search}
           onChange={e => setSearch(e.target.value)} autoFocus sx={{ mt: 1.5 }}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'white' }} /></InputAdornment>,
-            sx: { borderRadius: 0, bgcolor: 'rgba(255,255,255,0.12)', color: 'white',
+            sx: { borderRadius: 0, bgcolor: 'rgba(255,255,255,0.15)', color: 'white',
               '& input': { color: 'white' }, '& input::placeholder': { color: 'rgba(255,255,255,0.6)' } } }}
         />
       </Box>
 
       <Box sx={{ overflowY: 'auto', flex: 1, bgcolor: 'white' }}>
-        {loading && <LinearProgress />}
-        {!loading && filtered.length === 0 && (
-          <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center', fontSize: 15 }}>
-            No students from DB for this category
+        {filtered.length === 0 && (
+          <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center', fontSize: 16 }}>
+            {search ? 'No match — try different spelling' : 'No students found'}
           </Typography>
         )}
         {filtered.map(s => {
-          const name = (s.fullName || `${s.firstName} ${s.lastName}`).trim();
+          const name = sName(s);
           const already = existingNames.has(name.toLowerCase());
           return (
             <Box key={s._id} onClick={() => !already && addFromDb(s)}
-              sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5,
+              sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.75,
                 borderBottom: '1px solid #e0e0e0', cursor: already ? 'default' : 'pointer',
-                opacity: already ? 0.5 : 1, '&:hover': { bgcolor: already ? 'transparent' : '#f5f5f5' } }}>
+                opacity: already ? 0.45 : 1, '&:hover': { bgcolor: already ? 'transparent' : '#f5f5f5' } }}>
               <Box sx={{ flex: 1 }}>
-                <Typography fontWeight={700} fontSize={16}>{name}</Typography>
-                {s.percentage ? <Typography variant="caption" color="text.secondary">{s.percentage}%</Typography> : null}
+                <Typography fontWeight={700} fontSize={17}>{name}</Typography>
+                <Typography fontSize={12} color="text.secondary">
+                  {s.categoryId?.title || s.categoryOther || ''}
+                  {s.percentage ? ` · ${s.percentage}%` : ''}
+                </Typography>
               </Box>
-              {already
-                ? <Chip label="added" size="small" sx={{ borderRadius: 0 }} />
-                : <AddIcon sx={{ color: 'primary.main' }} />}
+              {already ? <Chip label="added" size="small" sx={{ borderRadius: 0 }} /> : <AddIcon sx={{ color: 'primary.main' }} />}
             </Box>
           );
         })}
       </Box>
 
       <Box sx={{ px: 2, py: 1.5, bgcolor: 'white', borderTop: '2px solid #e0e0e0', flexShrink: 0 }}>
-        <Typography fontSize={12} color="text.secondary" sx={{ mb: 1 }}>Or add manually:</Typography>
+        <Typography fontSize={12} color="text.secondary" sx={{ mb: 1 }}>Or type manually:</Typography>
         <Stack direction="row" spacing={1}>
           <TextField size="small" placeholder="Student name" value={customName}
             onChange={e => setCustomName(e.target.value)} sx={{ flex: 2 }}
@@ -280,9 +280,7 @@ function StudentPicker({ open, onClose, catTitle, existingNames, onAdd }) {
 function StudentRow({ student, index, onSave, onDelete, teams, guests, presenterCounts, extraTeams, extraGuests, onAddExtra }) {
   function buildSelected(presenters) {
     const r = { 1: [], 2: [], 3: [], 4: [] };
-    (presenters || []).forEach(p => {
-      if (p.name && r[p.row] && !r[p.row].includes(p.name)) r[p.row].push(p.name);
-    });
+    (presenters || []).forEach(p => { if (p.name && r[p.row] && !r[p.row].includes(p.name)) r[p.row].push(p.name); });
     return r;
   }
 
@@ -290,19 +288,18 @@ function StudentRow({ student, index, onSave, onDelete, teams, guests, presenter
   const rowSelRef = useRef(rowSel);
   rowSelRef.current = rowSel;
   const [saving, setSaving] = useState(false);
-  const [pickerRow, setPickerRow] = useState(null); // which row's picker is open
+  const [pickerRow, setPickerRow] = useState(null);
 
-  // Keep local state in sync when server data changes
-  useEffect(() => {
-    setRowSel(buildSelected(student.presenters));
-  }, [student.presenters]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sync with server updates
+  useEffect(() => { setRowSel(buildSelected(student.presenters)); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(student.presenters)]
+  );
 
   function flattenSelected(sel) {
-    const result = [];
-    [1,2,3,4].forEach(row =>
-      (sel[row] || []).forEach((name, idx) => result.push({ name, row, slot: idx+1 }))
-    );
-    return result;
+    const r = [];
+    [1,2,3,4].forEach(row => (sel[row]||[]).forEach((name,idx) => r.push({ name, row, slot:idx+1 })));
+    return r;
   }
 
   async function handleRowChange(row, names) {
@@ -314,70 +311,64 @@ function StudentRow({ student, index, onSave, onDelete, teams, guests, presenter
   }
 
   async function toggleStatus() {
-    const newStatus = (student.status || 'live') === 'live' ? 'done' : 'live';
-    await onSave({ ...student, status: newStatus });
+    await onSave({ ...student, status: (student.status||'live') === 'live' ? 'done' : 'live' });
   }
 
   const isDone = (student.status || 'live') === 'done';
+  const allNames = [1,2,3,4].flatMap(row => rowSel[row] || []);
 
   return (
     <Box sx={{ borderBottom: '1px solid #e0e0e0', bgcolor: isDone ? '#f1f8e9' : 'white' }}>
-      {/* Student header row */}
-      <Stack direction="row" alignItems="center" sx={{ px: 1.5, py: 1, bgcolor: isDone ? '#e8f5e9' : '#f8f9fa' }}>
-        <Typography fontSize={12} color="text.secondary" sx={{ minWidth: 22, fontWeight: 700 }}>
+      {/* Student header */}
+      <Stack direction="row" alignItems="flex-start" sx={{ px: 1.5, py: 1.25, bgcolor: isDone ? '#e8f5e9' : '#f8f9fa' }}>
+        <Typography fontSize={13} color="text.secondary" sx={{ minWidth: 24, mt: 0.3, fontWeight: 700 }}>
           {index + 1}
         </Typography>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap">
-            <Typography fontWeight={800} fontSize={16}>{student.name}</Typography>
+            <Typography fontWeight={900} fontSize={17}>{student.name}</Typography>
             {student.percentage && (
-              <Box sx={{ fontSize: 12, fontWeight: 700, color: '#1565c0', bgcolor: '#e3f2fd', px: 0.75, py: 0.25 }}>
+              <Box sx={{ fontSize: 12, fontWeight: 800, color: '#1565c0', bgcolor: '#e3f2fd', px: 0.75, py: 0.2 }}>
                 {student.percentage}
               </Box>
             )}
             {student.extra && <Typography fontSize={12} color="text.secondary">{student.extra}</Typography>}
-            {saving && <CircularProgress size={12} />}
+            {saving && <CircularProgress size={13} />}
           </Stack>
         </Box>
-        <IconButton size="small" onClick={toggleStatus} sx={{ p: 0.5, color: isDone ? DONE_BG : '#9e9e9e' }}>
-          {isDone ? <CheckCircleIcon fontSize="small" /> : <RadioButtonUncheckedIcon fontSize="small" />}
+        <IconButton size="small" onClick={toggleStatus}
+          sx={{ p: 0.5, color: isDone ? DONE_BG : '#bdbdbd', ml: 0.5 }}>
+          {isDone ? <CheckCircleIcon /> : <RadioButtonUncheckedIcon />}
         </IconButton>
         <IconButton size="small" color="error" onClick={() => onDelete(student)} sx={{ p: 0.5 }}>
-          <DeleteIcon sx={{ fontSize: 16 }} />
+          <DeleteIcon sx={{ fontSize: 18 }} />
         </IconButton>
       </Stack>
 
-      {/* Presenter rows — table-like */}
+      {/* Presenter rows — NO labels, just row number + names */}
       {PRESENTER_ROWS.map(rd => {
         const sel = rowSel[rd.row] || [];
         return (
           <Stack key={rd.row} direction="row" alignItems="flex-start"
-            sx={{ px: 1.5, py: 0.75, borderTop: '1px solid #f0f0f0',
-              '&:hover': { bgcolor: '#fafafa' } }}>
-            <Typography fontSize={11} color="text.secondary" sx={{ minWidth: 22, pt: 0.25 }}>
-              {rd.row}.
-            </Typography>
-            <Typography fontSize={11} fontWeight={700} color="#455a64"
-              sx={{ minWidth: 110, pt: 0.25 }}>
-              {rd.label}
+            onClick={() => setPickerRow(rd.row)}
+            sx={{ px: 1.5, py: sel.length ? 0.75 : 0.5, cursor: 'pointer',
+              borderTop: '1px solid #f0f0f0', '&:hover': { bgcolor: '#fafafa' } }}>
+            <Typography fontSize={11} color="text.disabled" sx={{ minWidth: 18, pt: 0.25, flexShrink: 0 }}>
+              {rd.row}
             </Typography>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               {sel.length === 0 ? (
-                <Typography fontSize={13} color="text.disabled" fontStyle="italic">—</Typography>
-              ) : (
-                sel.map(name => (
-                  <Typography key={name} fontSize={14} fontWeight={700} sx={{ lineHeight: 1.7 }}>{name}</Typography>
-                ))
-              )}
+                <Typography fontSize={14} color="text.disabled" fontStyle="italic">—</Typography>
+              ) : sel.map(name => (
+                <Typography key={name} fontWeight={800} fontSize={15} sx={{ lineHeight: 1.75 }}>{name}</Typography>
+              ))}
             </Box>
-            <IconButton size="small" onClick={() => setPickerRow(rd.row)} sx={{ p: 0.25, ml: 0.5, borderRadius: 0 }}>
-              <EditIcon sx={{ fontSize: 14, color: '#78909c' }} />
-            </IconButton>
+            <EditIcon sx={{ fontSize: 16, color: '#ccc', mt: 0.25, flexShrink: 0 }} />
           </Stack>
         );
       })}
 
-      {/* Presenter pickers — one per row */}
+      {/* Presenter pickers */}
       {PRESENTER_ROWS.map(rd => (
         <PresenterPicker key={rd.row}
           open={pickerRow === rd.row}
@@ -395,7 +386,7 @@ function StudentRow({ student, index, onSave, onDelete, teams, guests, presenter
 }
 
 // ── Category accordion ────────────────────────────────────────────────────────
-function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCategoryDelete, teams, guests, presenterCounts, extraTeams, extraGuests, onAddExtra }) {
+function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCategoryDelete, teams, guests, presenterCounts, extraTeams, extraGuests, onAddExtra, allDbStudents }) {
   const catRef = useRef(cat);
   useEffect(() => { catRef.current = cat; }, [cat]);
 
@@ -409,40 +400,32 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
     [cat.students]
   );
 
-  // Auto-import from DB on mount
+  // Auto-import on mount using pre-loaded allDbStudents
   useEffect(() => {
-    if (autoImportDone.current) return;
+    if (autoImportDone.current || !allDbStudents.length) return;
     autoImportDone.current = true;
-    async function autoImport() {
-      try {
-        const res = await fetch(`${API}/api/categories`, { headers: authHeader() });
-        const cats = await safeJson(res);
-        const matched = (Array.isArray(cats) ? cats : []).find(c =>
-          (c.name || c.title || '').toLowerCase() === catRef.current.title.toLowerCase()
-        );
-        if (!matched) return;
-        const sRes = await fetch(`${API}/api/students?categoryId=${matched._id}&limit=200`, { headers: authHeader() });
-        const sData = await safeJson(sRes);
-        const dbList = Array.isArray(sData) ? sData : sData.students || sData.data || [];
-        const cur = catRef.current;
-        const curNames = new Set((cur.students || []).map(s => s.name.toLowerCase().trim()));
-        const toAdd = dbList.filter(s =>
-          !curNames.has((s.fullName || `${s.firstName} ${s.lastName}`).trim().toLowerCase())
-        );
-        if (!toAdd.length) return;
-        const startOrder = (cur.students?.length || 0) + 1;
-        onCategoryUpdate({ ...cur, students: [
-          ...(cur.students || []),
-          ...toAdd.map((s, i) => ({
-            name: s.fullName || `${s.firstName} ${s.lastName}`.trim(),
-            percentage: s.percentage ? `${s.percentage}%` : '',
-            extra: '', presenters: [], order: startOrder + i, status: 'live',
-          })),
-        ]});
-      } catch { /* silent */ }
-    }
-    autoImport();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const cur = catRef.current;
+    const curNames = new Set((cur.students || []).map(s => s.name.toLowerCase().trim()));
+
+    // Match DB students to this category by title
+    const matched = allDbStudents.filter(s => {
+      const dbCatTitle = s.categoryId?.title || s.categoryName || s.categoryOther || '';
+      return catTitleMatch(cur.title, dbCatTitle);
+    });
+
+    const toAdd = matched.filter(s => !curNames.has(sName(s).toLowerCase()));
+    if (!toAdd.length) return;
+
+    const startOrder = (cur.students?.length || 0) + 1;
+    onCategoryUpdate({ ...cur, students: [
+      ...(cur.students || []),
+      ...toAdd.map((s, i) => ({
+        name: sName(s),
+        percentage: s.percentage ? `${s.percentage}%` : '',
+        extra: '', presenters: [], order: startOrder + i, status: 'live',
+      })),
+    ]});
+  }, [allDbStudents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveStudentPresenter(updated) {
     const cur = catRef.current;
@@ -465,59 +448,56 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
     }]});
   }
 
-  async function toggleCategoryStatus() {
-    const cur = catRef.current;
-    onCategoryUpdate({ ...cur, status: (cur.status || 'live') === 'live' ? 'done' : 'live' });
-  }
-
   const isDone = (cat.status || 'live') === 'done';
   const students = (cat.students || []).slice().sort((a, b) => a.order - b.order);
 
   return (
-    <Box sx={{ mb: 1.5, border: '1px solid #ccc' }}>
+    <Box sx={{ mb: 1, border: '1px solid', borderColor: isDone ? '#388e3c' : '#334155' }}>
       {/* Category header */}
       <Stack direction="row" alignItems="center"
-        sx={{ px: 1.5, py: 1.25, bgcolor: isDone ? DONE_BG : NAVY, color: 'white', cursor: 'pointer' }}
+        sx={{ px: 1.5, py: 1.5, bgcolor: isDone ? DONE_BG : NAVY, color: 'white', cursor: 'pointer' }}
         onClick={onToggle}>
-        <ExpandMoreIcon sx={{ mr: 1, fontSize: 20, transition: '0.2s',
-          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-        <Typography fontWeight={900} fontSize={16} sx={{ flex: 1 }}>{cat.title}</Typography>
-        <Box sx={{ fontSize: 12, bgcolor: 'rgba(255,255,255,0.2)', px: 1, py: 0.25, mr: 1 }}>
+        <ExpandMoreIcon sx={{ mr: 1.5, fontSize: 26, transition: 'transform 0.2s',
+          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }} />
+        <Typography fontWeight={900} fontSize={17} sx={{ flex: 1, lineHeight: 1.3 }}>{cat.title}</Typography>
+        <Box sx={{ fontSize: 13, fontWeight: 800, bgcolor: 'rgba(255,255,255,0.2)',
+          px: 1, py: 0.25, mr: 1, flexShrink: 0 }}>
           {students.length}
         </Box>
-        {/* Status toggle */}
-        <IconButton size="small" onClick={e => { e.stopPropagation(); toggleCategoryStatus(); }}
-          sx={{ color: 'white', p: 0.5 }}>
-          {isDone ? <CheckCircleIcon fontSize="small" /> : <RadioButtonUncheckedIcon fontSize="small" />}
+        <IconButton size="small" onClick={e => { e.stopPropagation(); onCategoryUpdate({ ...cat, status: isDone ? 'live' : 'done' }); }}
+          sx={{ color: isDone ? '#a5d6a7' : 'rgba(255,255,255,0.6)', p: 0.5 }}>
+          {isDone ? <CheckCircleIcon sx={{ fontSize: 24 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 24 }} />}
         </IconButton>
-        <IconButton size="small" onClick={e => { e.stopPropagation(); setEditTitle(cat.title); setEditTitleOpen(true); }}
-          sx={{ color: 'rgba(255,255,255,0.8)', p: 0.5 }}>
-          <EditIcon sx={{ fontSize: 16 }} />
+        <IconButton size="small"
+          onClick={e => { e.stopPropagation(); setEditTitle(cat.title); setEditTitleOpen(true); }}
+          sx={{ color: 'rgba(255,255,255,0.7)', p: 0.5 }}>
+          <EditIcon sx={{ fontSize: 22 }} />
         </IconButton>
         <IconButton size="small" onClick={e => { e.stopPropagation(); onCategoryDelete(cat); }}
           sx={{ color: '#ef9a9a', p: 0.5 }}>
-          <DeleteIcon sx={{ fontSize: 16 }} />
+          <DeleteIcon sx={{ fontSize: 22 }} />
         </IconButton>
       </Stack>
 
       {/* Expanded body */}
       {expanded && (
         <Box>
-          {/* Column headers */}
-          <Stack direction="row" sx={{ px: 1.5, py: 0.5, bgcolor: '#eceff1', borderBottom: '1px solid #ccc' }}>
-            <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ minWidth: 22 }}>#</Typography>
+          <Stack direction="row" sx={{ px: 1.5, py: 0.5, bgcolor: '#eceff1', borderBottom: '1px solid #cfd8dc' }}>
+            <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ minWidth: 24 }}>#</Typography>
             <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ flex: 1 }}>STUDENT</Typography>
-            <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ minWidth: 60 }}>PRESENTERS</Typography>
+            <Typography fontSize={11} fontWeight={800} color="text.secondary" sx={{ mr: 4 }}>PRESENTERS (1–4)</Typography>
           </Stack>
 
           {students.length === 0 && (
-            <Typography fontSize={14} color="text.secondary" sx={{ p: 2, textAlign: 'center', fontStyle: 'italic' }}>
-              No students yet — auto-importing from DB or add manually
+            <Typography fontSize={14} color="text.secondary"
+              sx={{ p: 2, textAlign: 'center', fontStyle: 'italic' }}>
+              No students yet — auto-importing from DB…
             </Typography>
           )}
 
           {students.map((student, i) => (
-            <StudentRow key={`${student.name}-${student.order}-${(student.presenters||[]).length}`}
+            <StudentRow
+              key={`${student.name}-${student.order}-${(student.presenters||[]).length}`}
               student={student} index={i}
               onSave={saveStudentPresenter} onDelete={deleteStudent}
               teams={teams} guests={guests} presenterCounts={presenterCounts}
@@ -535,7 +515,8 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
       )}
 
       <StudentPicker open={studentPickerOpen} onClose={() => setStudentPickerOpen(false)}
-        catTitle={cat.title} existingNames={existingNames} onAdd={addStudent} />
+        catTitle={cat.title} existingNames={existingNames}
+        allDbStudents={allDbStudents} onAdd={addStudent} />
 
       <Dialog open={editTitleOpen} onClose={() => setEditTitleOpen(false)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { borderRadius: 0 } }}>
@@ -556,7 +537,7 @@ function CategoryAccordion({ cat, expanded, onToggle, onCategoryUpdate, onCatego
   );
 }
 
-// ── PDF Export — table format ─────────────────────────────────────────────────
+// ── PDF Export ────────────────────────────────────────────────────────────────
 function exportToPDF(categories) {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' });
   const W = 210, H = 297, MX = 12, MY = 14;
@@ -567,62 +548,40 @@ function exportToPDF(categories) {
   function newPage() { doc.addPage(); y = MY; }
   function need(h) { if (y + h > H - MY) newPage(); }
 
-  // Page 1 title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22); doc.setTextColor(0, 0, 180);
-  doc.text('19th BK Scholar Awards', W/2, y+8, { align: 'center' });
-  y += 13;
-  doc.setFontSize(14); doc.setTextColor(180, 0, 0);
-  doc.text('Sunday, 14th June 2026', W/2, y+6, { align: 'center' });
-  y += 13;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(0,0,180);
+  doc.text('19th BK Scholar Awards', W/2, y+8, { align: 'center' }); y += 13;
+  doc.setFontSize(14); doc.setTextColor(180,0,0);
+  doc.text('Sunday, 14th June 2026', W/2, y+6, { align: 'center' }); y += 13;
 
   for (const cat of categories) {
-    const students = [...(cat.students || [])].sort((a,b) => a.order - b.order);
+    const students = [...(cat.students||[])].sort((a,b) => a.order - b.order);
     if (!students.length) continue;
-
     need(10 + STU_H);
-
-    // Category header — yellow background
-    doc.setFillColor(255, 255, 0);
-    doc.rect(MX, y, W-2*MX, 9, 'F');
-    doc.setDrawColor(0); doc.setLineWidth(0.4);
-    doc.rect(MX, y, W-2*MX, 9, 'D');
+    doc.setFillColor(255,255,0); doc.rect(MX, y, W-2*MX, 9, 'F');
+    doc.setDrawColor(0); doc.setLineWidth(0.4); doc.rect(MX, y, W-2*MX, 9, 'D');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(0,0,0);
-    doc.text(cat.title, W/2, y+6.2, { align: 'center' });
-    y += 9;
+    doc.text(cat.title, W/2, y+6.2, { align: 'center' }); y += 9;
 
     students.forEach((student, idx) => {
       need(STU_H);
       const sy = y;
-
-      // Collect presenter lines
       const byRow = {};
-      (student.presenters || []).forEach(p => {
-        if (!byRow[p.row]) byRow[p.row] = [];
-        if (p.name) byRow[p.row].push(p.name);
-      });
+      (student.presenters||[]).forEach(p => { if (!byRow[p.row]) byRow[p.row]=[]; if(p.name) byRow[p.row].push(p.name); });
       const pLines = [1,2,3,4].map(r => (byRow[r]||[]).filter(Boolean).join(' & '));
 
-      // Outer border
-      doc.setDrawColor(0); doc.setLineWidth(0.35);
-      doc.rect(MX, sy, W-2*MX, STU_H, 'D');
-
-      // Vertical separators
+      doc.setDrawColor(0); doc.setLineWidth(0.35); doc.rect(MX, sy, W-2*MX, STU_H, 'D');
       [C.nx, C.px, C.rx].forEach(x => { doc.setLineWidth(0.25); doc.line(x, sy, x, sy+STU_H); });
 
-      // Serial
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(0,0,0);
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(0,0,0);
       doc.text(String(idx+1), C.sx+C.sw/2, sy+STU_H/2+2, { align: 'center' });
 
-      // Student name (bold red)
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(180,30,30);
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(180,30,30);
       const nw = doc.splitTextToSize(student.name, C.nw-3);
       const nY = sy + STU_H/2 - (nw.length*5.5)/2 + 4.5;
-      nw.forEach((l, li) => doc.text(l, C.nx+2, nY+li*5.5));
+      nw.forEach((l,li) => doc.text(l, C.nx+2, nY+li*5.5));
 
-      // Percentage
       if (student.percentage) {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(0,0,0);
+        doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(0,0,0);
         const pw = doc.splitTextToSize(student.percentage, C.pw-2);
         const pY = student.extra ? sy+STU_H/2-2 : sy+STU_H/2+2;
         doc.text(pw, C.px+C.pw/2, pY, { align: 'center' });
@@ -632,26 +591,21 @@ function exportToPDF(categories) {
         }
       }
 
-      // Presenter lines with horizontal dividers
       pLines.forEach((line, ri) => {
         const ry = sy + ri*ROW_H;
         if (ri > 0) { doc.setDrawColor(160,160,160); doc.setLineWidth(0.15); doc.line(C.rx, ry, W-MX, ry); }
         if (line) {
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(0,0,0);
-          // Note: Hindi/Devanagari characters won't render with standard fonts
-          const lw = doc.splitTextToSize(line, C.rw-4);
-          doc.text(lw, C.rx+2, ry+5.5);
+          doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(0,0,0);
+          doc.text(doc.splitTextToSize(line, C.rw-4), C.rx+2, ry+5.5);
         }
       });
-
       y += STU_H;
     });
   }
 
   const total = doc.getNumberOfPages();
   for (let pg = 1; pg <= total; pg++) {
-    doc.setPage(pg);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(140,140,140);
+    doc.setPage(pg); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(140,140,140);
     doc.text(`Page ${pg} of ${total}`, W/2, H-5, { align: 'center' });
     doc.text('BK Scholar Awards', MX, H-5);
   }
@@ -668,10 +622,11 @@ function AgendaPage() {
   const [seeding, setSeeding] = useState(false);
   const [teams, setTeams] = useState([]);
   const [guests, setGuests] = useState([]);
+  const [allDbStudents, setAllDbStudents] = useState([]);
   const [extraTeams, setExtraTeams] = useState([]);
   const [extraGuests, setExtraGuests] = useState([]);
   const [tab, setTab] = useState('live');
-  const [expandedCat, setExpandedCat] = useState(null); // _id of expanded category
+  const [expandedCat, setExpandedCat] = useState(null);
   const [addCatOpen, setAddCatOpen] = useState(false);
   const [newCatTitle, setNewCatTitle] = useState('');
   const [dbCategories, setDbCategories] = useState([]);
@@ -680,8 +635,8 @@ function AgendaPage() {
   const presenterCounts = useMemo(() => {
     const counts = {};
     categories.forEach(cat =>
-      (cat.students || []).forEach(student =>
-        (student.presenters || []).forEach(p => { if (p.name) counts[p.name] = (counts[p.name] || 0) + 1; })
+      (cat.students||[]).forEach(student =>
+        (student.presenters||[]).forEach(p => { if(p.name) counts[p.name] = (counts[p.name]||0) + 1; })
       )
     );
     return counts;
@@ -701,12 +656,21 @@ function AgendaPage() {
       setCategories(data);
     } catch (e) { setError(e.message); setLoading(false); return; }
 
+    // Users (teams/guests)
     try {
       const r = await fetch(`${API}/api/users`, { headers: authHeader() });
       const d = await safeJson(r);
       const ul = Array.isArray(d) ? d : d.users || [];
       setTeams(ul.filter(u => ['TEAM_LEADER','SENIOR_TEAM','ADMIN','HOST','SUPER_ADMIN'].includes(u.eventDutyType)).map(u => u.name).filter(Boolean));
       setGuests(ul.filter(u => u.eventDutyType === 'GUEST').map(u => u.name).filter(Boolean));
+    } catch { /* optional */ }
+
+    // All students — categoryId is populated, so we filter client-side per category
+    try {
+      const r = await fetch(`${API}/api/students`, { headers: authHeader() });
+      const d = await safeJson(r);
+      const list = Array.isArray(d) ? d : d.students || d.data || [];
+      setAllDbStudents(list);
     } catch { /* optional */ }
 
     setLoading(false);
@@ -748,7 +712,7 @@ function AgendaPage() {
       const cat = await safeJson(res);
       if (!res.ok) throw new Error(cat?.message || `HTTP ${res.status}`);
       setCategories(prev => [...prev, cat]);
-      setExpandedCat(cat._id); // auto-expand newly added category
+      setExpandedCat(cat._id);
       setAddCatOpen(false);
     } catch (e) { setError(e.message); }
   }
@@ -778,45 +742,42 @@ function AgendaPage() {
     !newCatTitle || (c.name || c.title || '').toLowerCase().includes(newCatTitle.toLowerCase())
   );
 
-  const visibleCats = categories.filter(c => (c.status || 'live') === tab).sort((a,b) => a.order - b.order);
-  const liveCt = categories.filter(c => (c.status || 'live') === 'live').length;
-  const doneCt = categories.filter(c => (c.status || 'live') === 'done').length;
+  const liveCats = categories.filter(c => (c.status||'live') === 'live').sort((a,b) => a.order - b.order);
+  const doneCats = categories.filter(c => (c.status||'live') === 'done').sort((a,b) => a.order - b.order);
+  const visibleCats = tab === 'live' ? liveCats : doneCats;
 
   return (
     <>
-      <PageHeader
-        title="Agenda"
-        subtitle={`${categories.length} categories · ${categories.reduce((s,c) => s+(c.students?.length||0), 0)} students`}
+      <PageHeader title="Agenda"
+        subtitle={`${liveCats.length} live · ${doneCats.length} done · ${categories.reduce((s,c) => s+(c.students?.length||0), 0)} students`}
       />
       <PageSurface>
-        {/* Tabs */}
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 1.5,
-          '& .MuiTab-root': { fontWeight: 800, borderRadius: 0, minHeight: 40 } }}>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)}
+          sx={{ mb: 1.5, '& .MuiTab-root': { fontWeight: 800, borderRadius: 0, minHeight: 44, fontSize: 15 } }}>
           <Tab value="live" label={
             <Stack direction="row" spacing={0.75} alignItems="center">
               <span>Live</span>
-              <Box sx={{ bgcolor: '#1976d2', color: 'white', fontSize: 11, fontWeight: 800,
-                minWidth: 20, height: 20, borderRadius: 0, px: 0.5,
-                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{liveCt}</Box>
+              <Box sx={{ bgcolor: '#1976d2', color: 'white', fontSize: 12, fontWeight: 900,
+                minWidth: 22, height: 22, borderRadius: 0, px: 0.6,
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{liveCats.length}</Box>
             </Stack>
           } />
           <Tab value="done" label={
             <Stack direction="row" spacing={0.75} alignItems="center">
               <span>Done</span>
-              <Box sx={{ bgcolor: DONE_BG, color: 'white', fontSize: 11, fontWeight: 800,
-                minWidth: 20, height: 20, borderRadius: 0, px: 0.5,
-                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{doneCt}</Box>
+              <Box sx={{ bgcolor: DONE_BG, color: 'white', fontSize: 12, fontWeight: 900,
+                minWidth: 22, height: 22, borderRadius: 0, px: 0.6,
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{doneCats.length}</Box>
             </Stack>
           } />
         </Tabs>
 
-        {/* Action bar */}
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
-          <Button variant="outlined" startIcon={<RefreshIcon />} onClick={load} disabled={loading}
-            sx={{ borderRadius: 0 }}>Refresh</Button>
+          <Button variant="outlined" startIcon={<RefreshIcon />} onClick={load} disabled={loading} sx={{ borderRadius: 0 }}>
+            Refresh
+          </Button>
           {categories.length === 0 && !loading && (
-            <Button variant="contained" color="secondary" onClick={seed} disabled={seeding}
-              sx={{ borderRadius: 0 }}
+            <Button variant="contained" color="secondary" onClick={seed} disabled={seeding} sx={{ borderRadius: 0 }}
               startIcon={seeding ? <CircularProgress size={16} color="inherit" /> : null}>
               {seeding ? 'Seeding…' : '🌱 Load Default Data'}
             </Button>
@@ -824,9 +785,9 @@ function AgendaPage() {
           <Button variant="outlined" startIcon={<AddIcon />} onClick={openAddCat} sx={{ borderRadius: 0 }}>
             Add Category
           </Button>
-          <Button variant="contained" color="success" startIcon={<DownloadIcon />}
-            onClick={() => { try { exportToPDF(categories.filter(c => (c.status||'live')==='live')); } catch(e) { setError(e.message); } }}
-            disabled={categories.length === 0} sx={{ borderRadius: 0 }}>
+          <Button variant="contained" color="success" startIcon={<DownloadIcon />} sx={{ borderRadius: 0 }}
+            onClick={() => { try { exportToPDF(liveCats); } catch(e) { setError(e.message); } }}
+            disabled={liveCats.length === 0}>
             Export PDF
           </Button>
         </Stack>
@@ -838,9 +799,9 @@ function AgendaPage() {
           <Alert severity="info" sx={{ borderRadius: 0 }}>
             {tab === 'live'
               ? categories.length === 0
-                ? <>No categories yet. Click <strong>Load Default Data</strong> or add manually.</>
-                : 'No live categories. All are marked done.'
-              : 'No categories marked as done yet.'}
+                ? <>No categories. Click <strong>Load Default Data</strong> or Add Category.</>
+                : 'All categories are marked done.'
+              : 'No done categories yet.'}
           </Alert>
         )}
 
@@ -851,10 +812,10 @@ function AgendaPage() {
             onCategoryUpdate={updateCategory} onCategoryDelete={deleteCategory}
             teams={teams} guests={guests} presenterCounts={presenterCounts}
             extraTeams={extraTeams} extraGuests={extraGuests} onAddExtra={handleAddExtra}
+            allDbStudents={allDbStudents}
           />
         ))}
 
-        {/* Add Category Dialog */}
         <Dialog open={addCatOpen} onClose={() => setAddCatOpen(false)} maxWidth="xs" fullWidth
           PaperProps={{ sx: { borderRadius: 0 } }}>
           <DialogTitle>Add Category</DialogTitle>
@@ -873,8 +834,8 @@ function AgendaPage() {
                 <Box sx={{ border: '1px solid #e0e0e0', maxHeight: 220, overflowY: 'auto' }}>
                   {filteredDbCats.slice(0, 20).map(c => (
                     <Box key={c._id} onClick={() => setNewCatTitle(c.name || c.title)}
-                      sx={{ px: 2, py: 1, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' },
-                        borderBottom: '1px solid #f0f0f0' }}>
+                      sx={{ px: 2, py: 1, cursor: 'pointer', borderBottom: '1px solid #f0f0f0',
+                        '&:hover': { bgcolor: 'action.hover' } }}>
                       <Typography fontSize={15}>{c.name || c.title}</Typography>
                     </Box>
                   ))}
@@ -896,7 +857,6 @@ function AgendaPage() {
   );
 }
 
-// ── Error boundary ────────────────────────────────────────────────────────────
 class AgendaErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(e) { return { error: e }; }
