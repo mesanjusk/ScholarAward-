@@ -17,6 +17,11 @@ let reconnectTimer = null;
 let isConnecting   = false;
 let reconnectCount = 0;
 
+// LID → real phone map: populated from contacts.upsert / contacts.update events.
+// WhatsApp's privacy system replaces phone JIDs with random LIDs in group metadata.
+// This map lets us reverse-look up the real number for export/messaging.
+const lidToPhone = new Map(); // "18012666704287@lid" → "919876543210"
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 async function getWASocketAndVersion() {
@@ -188,6 +193,18 @@ async function connect() {
 
     sock.ev.on('creds.update', () => saveCreds().catch(console.error));
 
+    // Build LID → phone map so group member export can resolve privacy IDs
+    const indexContacts = (contacts) => {
+      for (const c of (Array.isArray(contacts) ? contacts : Object.values(contacts))) {
+        if (c?.id && c.id.endsWith('@s.whatsapp.net') && c.lid) {
+          lidToPhone.set(c.lid, c.id.split('@')[0].replace(/\D/g, ''));
+        }
+      }
+    };
+    sock.ev.on('contacts.upsert',  indexContacts);
+    sock.ev.on('contacts.update',  indexContacts);
+    sock.ev.on('contacts.set',     ({ contacts }) => indexContacts(contacts));
+
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       if (type !== 'notify') return;
       for (const msg of messages) {
@@ -210,6 +227,7 @@ async function disconnect() {
   reconnectCount = 0;
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   killSocket();
+  lidToPhone.clear();
   await clearMongoAuthState().catch(console.error);
   baileysState = { qr: null, status: 'DISCONNECTED', phone: '' };
   isConnecting = false;
@@ -256,15 +274,32 @@ async function getGroups() {
 }
 
 function parseParticipant(p) {
-  // Skip LID entries — these are WhatsApp privacy IDs, not real phone numbers
-  if (p.id.endsWith('@lid')) return null;
-  const phone = p.id.split('@')[0].replace(/\D/g, '');
-  if (!phone) return null;
-  return {
-    jid:   p.id,
-    phone,
-    role:  p.admin || 'member',
-  };
+  const jid  = p.id;
+  const role = p.admin || 'member';
+
+  // Regular phone-number JID
+  if (jid.endsWith('@s.whatsapp.net')) {
+    const phone = jid.split('@')[0].replace(/\D/g, '');
+    return phone ? { jid, phone, role } : null;
+  }
+
+  // LID JID — try to map to real phone via contacts index
+  if (jid.endsWith('@lid')) {
+    const phone = lidToPhone.get(jid);
+    if (phone) return { jid, phone, role };
+    // Also try looking in socket.contacts directly (available after sync)
+    const contacts = baileysSocket?.contacts || {};
+    for (const [cJid, c] of Object.entries(contacts)) {
+      if (cJid.endsWith('@s.whatsapp.net') && c?.lid === jid) {
+        const p2 = cJid.split('@')[0].replace(/\D/g, '');
+        if (p2) { lidToPhone.set(jid, p2); return { jid, phone: p2, role }; }
+      }
+    }
+    // No mapping yet — include with a placeholder so member is not silently lost
+    return { jid, phone: '', lidId: jid.split('@')[0], role, unresolved: true };
+  }
+
+  return null;
 }
 
 async function getGroupMembers(groupId) {

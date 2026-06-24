@@ -3162,7 +3162,8 @@ function GroupMembersPanel({ baileysConnected }) {
   }, [filtered, selectedRows]); // eslint-disable-line
 
   const selectedMembers = filtered.filter(m => selectedRows.has(m.phone));
-  const exportTarget    = selectedMembers.length > 0 ? selectedMembers : filtered;
+  // Only export rows that have a resolved phone number
+  const exportTarget    = (selectedMembers.length > 0 ? selectedMembers : filtered).filter(m => m.phone);
 
   // ── Export helpers ────────────────────────────────────────────────────────
 
@@ -3406,7 +3407,13 @@ function GroupMembersPanel({ baileysConnected }) {
                             <Checkbox size="small" checked={isSelected} onChange={() => toggleRow(m.phone)} onClick={e => e.stopPropagation()} />
                           </td>
                           <td style={{ padding: '8px', color: '#999', fontSize: 12 }}>{i + 1}</td>
-                          <td style={{ padding: '8px', fontWeight: 600 }}>{m.phone}</td>
+                          <td style={{ padding: '8px', fontWeight: 600 }}>
+                            {m.phone || (
+                              <Tooltip title={`WhatsApp LID: ${m.lidId || '?'} — phone not yet synced`}>
+                                <span style={{ color: '#bbb', fontStyle: 'italic', fontSize: 12 }}>Private</span>
+                              </Tooltip>
+                            )}
+                          </td>
                           <td style={{ padding: '8px' }}>{m.name || <span style={{ color: '#bbb' }}>—</span>}</td>
                           <td style={{ padding: '8px' }}>
                             {m.role === 'superadmin' ? (
