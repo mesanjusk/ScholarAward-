@@ -24,6 +24,11 @@ import NavigateBeforeIcon   from '@mui/icons-material/NavigateBefore';
 import HistoryIcon          from '@mui/icons-material/History';
 import EditIcon             from '@mui/icons-material/Edit';
 import DeleteIcon           from '@mui/icons-material/Delete';
+import RefreshIcon          from '@mui/icons-material/Refresh';
+import PeopleIcon           from '@mui/icons-material/People';
+import SaveIcon             from '@mui/icons-material/Save';
+import SearchIcon           from '@mui/icons-material/Search';
+import FilterListIcon       from '@mui/icons-material/FilterList';
 import Fab                  from '@mui/material/Fab';
 import Portal               from '@mui/material/Portal';
 import Dialog               from '@mui/material/Dialog';
@@ -64,6 +69,7 @@ const baileysTabs = [
   ['manual-saved', '📱 Saved'],
   ['campaigns',    '🗓 Campaigns'],
   ['blasts',       'Blast History'],
+  ['groups',    '👥 Groups'],
   ['logs',      'Logs'],
   ['setup',     'Setup / QR'],
 ];
@@ -3068,6 +3074,364 @@ function RuleDialog({ open, onClose, editing, form, setForm, onSave, saving, isB
   );
 }
 
+// ── Group Members Panel ───────────────────────────────────────────────────────
+
+function GroupMembersPanel({ baileysConnected }) {
+  const [groups,        setGroups]        = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState(null); // null = All Groups
+  const [members,       setMembers]       = useState([]);
+  const [allMembers,    setAllMembers]    = useState([]);
+  const [loading,       setLoading]       = useState(false);
+  const [saving,        setSaving]        = useState(false);
+  const [search,        setSearch]        = useState('');
+  const [roleFilter,    setRoleFilter]    = useState('all');
+  const [msg,           setMsg]           = useState(null);
+  const [selectedRows,  setSelectedRows]  = useState(new Set());
+  const [selectAll,     setSelectAll]     = useState(false);
+
+  const loadGroups = async () => {
+    setLoading(true);
+    setMsg(null);
+    try {
+      const res = await whatsappService.baileysGetGroups();
+      setGroups(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      setMsg({ type: 'error', text: e?.response?.data?.message || 'Failed to load groups' });
+    } finally { setLoading(false); }
+  };
+
+  const loadAllMembers = async () => {
+    setLoading(true);
+    setMsg(null);
+    try {
+      const res = await whatsappService.baileysGetAllGroupMembers();
+      const data = Array.isArray(res.data) ? res.data : [];
+      setAllMembers(data);
+      setMembers(data);
+      setSelectedGroup(null);
+    } catch (e) {
+      setMsg({ type: 'error', text: e?.response?.data?.message || 'Failed to load members' });
+    } finally { setLoading(false); }
+  };
+
+  const loadGroupMembers = async (group) => {
+    setLoading(true);
+    setMsg(null);
+    try {
+      const res = await whatsappService.baileysGetGroupMembers(group.id);
+      const data = res.data?.members || [];
+      const withGroup = data.map(m => ({ ...m, groupId: group.id, groupName: group.name }));
+      setMembers(withGroup);
+      setSelectedGroup(group);
+    } catch (e) {
+      setMsg({ type: 'error', text: e?.response?.data?.message || 'Failed to load group members' });
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    if (baileysConnected) loadGroups();
+  }, [baileysConnected]); // eslint-disable-line
+
+  const filtered = members.filter(m => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || m.phone?.includes(q) || (m.name || '').toLowerCase().includes(q) || (m.groupName || '').toLowerCase().includes(q);
+    const matchRole   = roleFilter === 'all' || m.role === roleFilter || (roleFilter === 'member' && !m.role);
+    return matchSearch && matchRole;
+  });
+
+  const toggleRow = (phone) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      next.has(phone) ? next.delete(phone) : next.add(phone);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectAll) {
+      setSelectedRows(new Set());
+      setSelectAll(false);
+    } else {
+      setSelectedRows(new Set(filtered.map(m => m.phone)));
+      setSelectAll(true);
+    }
+  };
+
+  useEffect(() => {
+    setSelectAll(filtered.length > 0 && filtered.every(m => selectedRows.has(m.phone)));
+  }, [filtered, selectedRows]); // eslint-disable-line
+
+  const selectedMembers = filtered.filter(m => selectedRows.has(m.phone));
+  const exportTarget    = selectedMembers.length > 0 ? selectedMembers : filtered;
+
+  // ── Export helpers ────────────────────────────────────────────────────────
+
+  const exportCSV = () => {
+    const header = ['Name', 'Phone', 'Role', 'Group'];
+    const rows   = exportTarget.map(m => [m.name || '', m.phone, m.role || 'member', m.groupName || '']);
+    const csv    = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob   = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url    = URL.createObjectURL(blob);
+    const a      = document.createElement('a'); a.href = url; a.download = 'group_members.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportExcel = () => {
+    const ws  = XLSX.utils.json_to_sheet(exportTarget.map(m => ({ Name: m.name || '', Phone: m.phone, Role: m.role || 'member', Group: m.groupName || '' })));
+    const wb  = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Group Members');
+    XLSX.writeFile(wb, 'group_members.xlsx');
+  };
+
+  const exportJSON = () => {
+    const data = exportTarget.map(m => ({ name: m.name || '', phone: m.phone, role: m.role || 'member', groupId: m.groupId || '', groupName: m.groupName || '' }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a'); a.href = url; a.download = 'group_members.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportPDF = async () => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14);
+    doc.text('WhatsApp Group Members', 14, 15);
+    doc.setFontSize(9);
+    doc.text(`Exported: ${new Date().toLocaleString()} · Total: ${exportTarget.length}`, 14, 22);
+
+    const headers = [['#', 'Name', 'Phone', 'Role', 'Group']];
+    const body    = exportTarget.map((m, i) => [i + 1, m.name || '-', m.phone, m.role || 'member', m.groupName || '-']);
+
+    try {
+      const autoTable = (await import('jspdf-autotable')).default;
+      autoTable(doc, { head: headers, body, startY: 28, styles: { fontSize: 8 }, headStyles: { fillColor: [25, 118, 210] } });
+    } catch {
+      // Fallback plain text if autotable not available
+      let y = 30;
+      doc.setFontSize(8);
+      headers[0].forEach((h, i) => doc.text(h, 14 + i * 50, y));
+      y += 6;
+      body.forEach(row => {
+        row.forEach((cell, i) => doc.text(String(cell), 14 + i * 50, y));
+        y += 6;
+        if (y > 190) { doc.addPage(); y = 14; }
+      });
+    }
+
+    doc.save('group_members.pdf');
+  };
+
+  const handleSaveToMongo = async () => {
+    const toSave = selectedMembers.length > 0 ? selectedMembers : filtered;
+    if (!toSave.length) return;
+    setSaving(true);
+    try {
+      const res = await whatsappService.baileysSaveGroupMembers({ members: toSave });
+      setMsg({ type: 'success', text: res.data?.message || 'Saved to MongoDB' });
+    } catch (e) {
+      setMsg({ type: 'error', text: e?.response?.data?.message || 'Save failed' });
+    } finally { setSaving(false); }
+  };
+
+  if (!baileysConnected) {
+    return (
+      <Card><CardContent>
+        <Alert severity="warning">
+          Baileys is not connected. Go to the <strong>Setup / QR</strong> tab and scan the QR code first.
+        </Alert>
+      </CardContent></Card>
+    );
+  }
+
+  return (
+    <Stack spacing={2}>
+      {/* Header */}
+      <Card><CardContent>
+        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
+          <Box>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <PeopleIcon color="warning" />
+              <Typography variant="h6" fontWeight={800}>WhatsApp Group Members</Typography>
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              Browse, filter, export and save group members to MongoDB
+            </Typography>
+          </Box>
+          <Button variant="outlined" startIcon={<RefreshIcon />} onClick={loadGroups} disabled={loading}>
+            Refresh Groups
+          </Button>
+        </Stack>
+      </CardContent></Card>
+
+      {msg && <Alert severity={msg.type} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+
+      <Grid container spacing={2}>
+        {/* ── Group List Sidebar ── */}
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent sx={{ p: 0 }}>
+              <Box sx={{ px: 2, py: 1.5, bgcolor: '#b37a00', color: '#fff' }}>
+                <Typography fontWeight={800}>Groups ({groups.length})</Typography>
+              </Box>
+              {loading && groups.length === 0 && <LinearProgress />}
+              <List sx={{ py: 0, maxHeight: '60vh', overflow: 'auto' }}>
+                {/* All groups option */}
+                <ListItemButton
+                  selected={selectedGroup === null && members.length > 0}
+                  onClick={loadAllMembers}
+                  sx={{ borderBottom: '1px solid', borderColor: 'divider', '&.Mui-selected': { bgcolor: '#fff8e1' } }}>
+                  <ListItemText
+                    primary={<Typography fontWeight={700}>All Groups</Typography>}
+                    secondary={`${allMembers.length} total members`}
+                  />
+                </ListItemButton>
+
+                {groups.map(g => (
+                  <ListItemButton
+                    key={g.id}
+                    selected={selectedGroup?.id === g.id}
+                    onClick={() => loadGroupMembers(g)}
+                    sx={{ borderBottom: '1px solid', borderColor: 'divider', '&.Mui-selected': { bgcolor: '#fff8e1' } }}>
+                    <ListItemText
+                      primary={<Typography fontWeight={600} noWrap>{g.name || g.id}</Typography>}
+                      secondary={`${g.memberCount || 0} members`}
+                    />
+                  </ListItemButton>
+                ))}
+
+                {groups.length === 0 && !loading && (
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No groups found. Click Refresh Groups.
+                    </Typography>
+                  </Box>
+                )}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* ── Members Table ── */}
+        <Grid size={{ xs: 12, md: 9 }}>
+          <Stack spacing={2}>
+            {/* Filters + Export bar */}
+            <Card><CardContent>
+              <Stack spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} flexWrap="wrap" useFlexGap>
+                  <TextField
+                    size="small" placeholder="Search name / number / group…" value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} /> }}
+                    sx={{ minWidth: 220, flex: 1 }}
+                  />
+                  <TextField select size="small" label="Role" value={roleFilter}
+                    onChange={e => setRoleFilter(e.target.value)} sx={{ minWidth: 130 }}>
+                    <MenuItem value="all">All Roles</MenuItem>
+                    <MenuItem value="superadmin">Super Admin</MenuItem>
+                    <MenuItem value="admin">Admin</MenuItem>
+                    <MenuItem value="member">Member</MenuItem>
+                  </TextField>
+                  <Chip
+                    label={`${filtered.length} members${selectedMembers.length > 0 ? ` · ${selectedMembers.length} selected` : ''}`}
+                    color="warning" variant="outlined"
+                    icon={<FilterListIcon />}
+                  />
+                </Stack>
+
+                {/* Export + Save buttons */}
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportCSV} disabled={!filtered.length}>
+                    CSV
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportExcel} disabled={!filtered.length} color="success">
+                    Excel
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportJSON} disabled={!filtered.length} color="info">
+                    JSON
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportPDF} disabled={!filtered.length} color="error">
+                    PDF
+                  </Button>
+                  <Divider orientation="vertical" flexItem />
+                  <Button
+                    size="small" variant="contained" color="warning"
+                    startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+                    onClick={handleSaveToMongo} disabled={saving || !filtered.length}>
+                    {selectedMembers.length > 0 ? `Save ${selectedMembers.length} Selected to DB` : `Save All (${filtered.length}) to DB`}
+                  </Button>
+                </Stack>
+
+                {selectedMembers.length > 0 && (
+                  <Typography variant="caption" color="text.secondary">
+                    {selectedMembers.length} row(s) selected — export/save will apply to selection only
+                  </Typography>
+                )}
+              </Stack>
+            </CardContent></Card>
+
+            {/* Members table */}
+            <Card>
+              {loading && <LinearProgress />}
+              <Box sx={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                  <thead>
+                    <tr style={{ background: '#f5f5f5' }}>
+                      <th style={{ padding: '10px 8px', textAlign: 'left', width: 40 }}>
+                        <Checkbox size="small" checked={selectAll} indeterminate={selectedRows.size > 0 && !selectAll} onChange={toggleAll} />
+                      </th>
+                      <th style={{ padding: '10px 8px', textAlign: 'left' }}>#</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'left' }}>Phone</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'left' }}>Name</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'left' }}>Role</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'left' }}>Group</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 && (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: '#999' }}>
+                          {members.length === 0
+                            ? 'Select a group or click "All Groups" to load members.'
+                            : 'No members match your filters.'}
+                        </td>
+                      </tr>
+                    )}
+                    {filtered.map((m, i) => {
+                      const isSelected = selectedRows.has(m.phone);
+                      return (
+                        <tr key={`${m.phone}-${m.groupId}`}
+                          style={{ borderBottom: '1px solid #eee', background: isSelected ? '#fff8e1' : 'transparent', cursor: 'pointer' }}
+                          onClick={() => toggleRow(m.phone)}>
+                          <td style={{ padding: '8px' }}>
+                            <Checkbox size="small" checked={isSelected} onChange={() => toggleRow(m.phone)} onClick={e => e.stopPropagation()} />
+                          </td>
+                          <td style={{ padding: '8px', color: '#999', fontSize: 12 }}>{i + 1}</td>
+                          <td style={{ padding: '8px', fontWeight: 600 }}>{m.phone}</td>
+                          <td style={{ padding: '8px' }}>{m.name || <span style={{ color: '#bbb' }}>—</span>}</td>
+                          <td style={{ padding: '8px' }}>
+                            {m.role === 'superadmin' ? (
+                              <Chip label="Super Admin" size="small" color="error" />
+                            ) : m.role === 'admin' ? (
+                              <Chip label="Admin" size="small" color="warning" />
+                            ) : (
+                              <Chip label="Member" size="small" variant="outlined" />
+                            )}
+                          </td>
+                          <td style={{ padding: '8px', color: '#666' }}>{m.groupName || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </Box>
+            </Card>
+          </Stack>
+        </Grid>
+      </Grid>
+    </Stack>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Main page
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3474,7 +3838,10 @@ export default function WhatsAppPage() {
       {useBaileys && tab === 'manual'        && <ManualInvitePanel />}
       {useBaileys && tab === 'manual-saved' && <ManualCampaignsPanel />}
       {useBaileys && tab === 'campaigns'    && <CampaignsPanel />}
-      {useBaileys && tab === 'blasts'     && <BlastHistoryPanel blasts={blasts} isBaileys />}
+      {useBaileys && tab === 'blasts'  && <BlastHistoryPanel blasts={blasts} isBaileys />}
+      {useBaileys && tab === 'groups' && (
+        <GroupMembersPanel baileysConnected={baileysStatus?.status === 'CONNECTED'} />
+      )}
       {useBaileys && tab === 'logs'  && <LogsPanel logs={baileysLogs} isBaileys />}
       {useBaileys && tab === 'setup' && (
         <BaileysSetup

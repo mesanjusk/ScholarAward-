@@ -41,6 +41,11 @@ const whatsappService = {
 
   baileysGetLogs:      ()           => api.get('/baileys/logs'),
 
+  baileysGetGroups:          ()    => api.get('/baileys/groups'),
+  baileysGetAllGroupMembers: ()    => api.get('/baileys/groups/all-members'),
+  baileysGetGroupMembers: (gid)    => api.get(`/baileys/groups/${encodeURIComponent(gid)}/members`),
+  baileysSaveGroupMembers: (data)  => api.post('/baileys/groups/save-members', data),
+
   // ── Campaigns (scheduled sends) ───────────────────────────────────────────
   listCampaigns:       ()           => api.get('/campaigns'),
   saveCampaign:        (payload)    => api.post('/campaigns', payload),

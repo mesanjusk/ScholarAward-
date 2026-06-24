@@ -12,6 +12,10 @@ const {
   sendInvitation,
   getRules,
   saveRule,
+  getBaileysGroups,
+  getBaileysGroupMembers,
+  getAllBaileysGroupMembers,
+  saveGroupMembersToMongo,
 } = require('../controllers/baileysController');
 
 // Status & connection management
@@ -35,5 +39,11 @@ router.get('/logs', protect, getLogs);
 router.get('/rules',     protect, getRules);
 router.post('/rules',    protect, saveRule);
 router.put('/rules/:id', protect, saveRule);
+
+// Group members — order matters: /all-members before /:groupId/members
+router.get('/groups',              protect, getBaileysGroups);
+router.get('/groups/all-members',  protect, getAllBaileysGroupMembers);
+router.get('/groups/:groupId/members', protect, getBaileysGroupMembers);
+router.post('/groups/save-members', protect, saveGroupMembersToMongo);
 
 module.exports = router;
