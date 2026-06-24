@@ -1,8 +1,9 @@
-const BaileysMessage = require('../models/BaileysMessage');
-const BaileysRule    = require('../models/WhatsAppAutoReplyRule'); // reuse same schema
-const Notification   = require('../models/Notification');
-const { emitEvent }  = require('../services/socket');
-const baileysService = require('../services/baileysService');
+const BaileysMessage      = require('../models/BaileysMessage');
+const BaileysRule         = require('../models/WhatsAppAutoReplyRule'); // reuse same schema
+const Notification        = require('../models/Notification');
+const WhatsAppGroupMember = require('../models/WhatsAppGroupMember');
+const { emitEvent }       = require('../services/socket');
+const baileysService      = require('../services/baileysService');
 
 function normalizePhone(value) {
   const d = String(value || '').replace(/[^\d]/g, '').trim();
@@ -243,6 +244,57 @@ async function sendInvitation(req, res) {
   });
 }
 
+// ── Group Members ─────────────────────────────────────────────────────────────
+
+async function getBaileysGroups(req, res) {
+  try {
+    const groups = await baileysService.getGroups();
+    res.json(groups);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+}
+
+async function getBaileysGroupMembers(req, res) {
+  try {
+    const { groupId } = req.params;
+    const data = await baileysService.getGroupMembers(decodeURIComponent(groupId));
+    if (!data) return res.status(404).json({ message: 'Group not found or Baileys not connected.' });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+}
+
+async function getAllBaileysGroupMembers(req, res) {
+  try {
+    const members = await baileysService.getAllGroupMembers();
+    res.json(members);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+}
+
+async function saveGroupMembersToMongo(req, res) {
+  const { members = [] } = req.body;
+  if (!Array.isArray(members) || members.length === 0) {
+    return res.status(400).json({ message: 'members array is required' });
+  }
+  let saved = 0, skipped = 0;
+  for (const m of members) {
+    if (!m.phone || !m.groupId) { skipped++; continue; }
+    try {
+      await WhatsAppGroupMember.findOneAndUpdate(
+        { phone: m.phone, groupId: m.groupId },
+        { $set: { name: m.name || '', groupName: m.groupName || '', role: m.role || 'member', jid: m.jid || '' } },
+        { upsert: true }
+      );
+      saved++;
+    } catch (_) { skipped++; }
+  }
+  res.json({ message: `${saved} saved, ${skipped} skipped`, saved, skipped });
+}
+
 // ── Auto-reply rules ──────────────────────────────────────────────────────────
 
 async function getRules(req, res) {
@@ -331,4 +383,8 @@ module.exports = {
   sendInvitation,
   getRules,
   saveRule,
+  getBaileysGroups,
+  getBaileysGroupMembers,
+  getAllBaileysGroupMembers,
+  saveGroupMembersToMongo,
 };

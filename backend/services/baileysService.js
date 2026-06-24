@@ -244,9 +244,56 @@ async function getGroups() {
   if (!baileysSocket || baileysState.status !== 'CONNECTED') return [];
   try {
     const groups = await baileysSocket.groupFetchAllParticipating();
-    return Object.entries(groups).map(([id, meta]) => ({ id, name: meta.subject || '' }));
+    return Object.entries(groups).map(([id, meta]) => ({
+      id,
+      name: meta.subject || '',
+      memberCount: meta.participants?.length || 0,
+    }));
   } catch (e) {
     console.error('[baileys] getGroups error:', e.message);
+    return [];
+  }
+}
+
+async function getGroupMembers(groupId) {
+  if (!baileysSocket || baileysState.status !== 'CONNECTED') return null;
+  try {
+    const meta = await baileysSocket.groupMetadata(groupId);
+    return {
+      id: meta.id,
+      name: meta.subject || '',
+      memberCount: meta.participants?.length || 0,
+      members: (meta.participants || []).map(p => ({
+        jid: p.id,
+        phone: p.id.split('@')[0],
+        role: p.admin || 'member',
+      })),
+    };
+  } catch (e) {
+    console.error('[baileys] getGroupMembers error:', e.message);
+    return null;
+  }
+}
+
+async function getAllGroupMembers() {
+  if (!baileysSocket || baileysState.status !== 'CONNECTED') return [];
+  try {
+    const groups = await baileysSocket.groupFetchAllParticipating();
+    const result = [];
+    for (const [id, meta] of Object.entries(groups)) {
+      for (const p of (meta.participants || [])) {
+        result.push({
+          jid: p.id,
+          phone: p.id.split('@')[0],
+          role: p.admin || 'member',
+          groupId: id,
+          groupName: meta.subject || '',
+        });
+      }
+    }
+    return result;
+  } catch (e) {
+    console.error('[baileys] getAllGroupMembers error:', e.message);
     return [];
   }
 }
@@ -280,4 +327,4 @@ async function autoConnectIfCredentialsExist() {
   }
 }
 
-module.exports = { connect, disconnect, sendText, sendImage, sendButtonMessage, getStatus, getGroups, autoConnectIfCredentialsExist, isWhatsappEnabled };
+module.exports = { connect, disconnect, sendText, sendImage, sendButtonMessage, getStatus, getGroups, getGroupMembers, getAllGroupMembers, autoConnectIfCredentialsExist, isWhatsappEnabled };
