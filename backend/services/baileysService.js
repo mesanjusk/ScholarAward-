@@ -247,7 +247,7 @@ async function getGroups() {
     return Object.entries(groups).map(([id, meta]) => ({
       id,
       name: meta.subject || '',
-      memberCount: meta.participants?.length || 0,
+      memberCount: (meta.participants || []).filter(p => !p.id.endsWith('@lid')).length,
     }));
   } catch (e) {
     console.error('[baileys] getGroups error:', e.message);
@@ -255,19 +255,28 @@ async function getGroups() {
   }
 }
 
+function parseParticipant(p) {
+  // Skip LID entries — these are WhatsApp privacy IDs, not real phone numbers
+  if (p.id.endsWith('@lid')) return null;
+  const phone = p.id.split('@')[0].replace(/\D/g, '');
+  if (!phone) return null;
+  return {
+    jid:   p.id,
+    phone,
+    role:  p.admin || 'member',
+  };
+}
+
 async function getGroupMembers(groupId) {
   if (!baileysSocket || baileysState.status !== 'CONNECTED') return null;
   try {
-    const meta = await baileysSocket.groupMetadata(groupId);
+    const meta    = await baileysSocket.groupMetadata(groupId);
+    const members = (meta.participants || []).map(parseParticipant).filter(Boolean);
     return {
       id: meta.id,
       name: meta.subject || '',
-      memberCount: meta.participants?.length || 0,
-      members: (meta.participants || []).map(p => ({
-        jid: p.id,
-        phone: p.id.split('@')[0],
-        role: p.admin || 'member',
-      })),
+      memberCount: members.length,
+      members,
     };
   } catch (e) {
     console.error('[baileys] getGroupMembers error:', e.message);
@@ -282,13 +291,9 @@ async function getAllGroupMembers() {
     const result = [];
     for (const [id, meta] of Object.entries(groups)) {
       for (const p of (meta.participants || [])) {
-        result.push({
-          jid: p.id,
-          phone: p.id.split('@')[0],
-          role: p.admin || 'member',
-          groupId: id,
-          groupName: meta.subject || '',
-        });
+        const parsed = parseParticipant(p);
+        if (!parsed) continue;
+        result.push({ ...parsed, groupId: id, groupName: meta.subject || '' });
       }
     }
     return result;
